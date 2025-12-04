@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Логи - Schedule Bot Admin{% endblock %}
+{% block content %}
+<h1><i class="bi bi-file-text"></i> Системні логи</h1>
+<table class="table table-sm">
+<thead><tr><th>Час</th><th>Рівень</th><th>Повідомлення</th></tr></thead>
+<tbody>
+{% for log in logs %}<tr><td>{{log.timestamp}}</td><td>{{log.level}}</td><td>{{log.message}}</td></tr>{% endfor %}
+</tbody>
+</table>
+<nav><ul class="pagination">
+<li class="page-item {% if page <= 1 %}disabled{% endif %}"><a class="page-link" href="?page={{page-1}}">Попередня</a></li>
+<li class="page-item active"><span class="page-link">{{page}}/{{total_pages}}</span></li>
+<li class="page-item {% if page >= total_pages %}disabled{% endif %}"><a class="page-link" href="?page={{page+1}}">Наступна</a></li>
+</ul></nav>
+{% endblock %}
+
+
+

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Статистика - Schedule Bot Admin{% endblock %}
+{% block content %}
+<h1><i class="bi bi-bar-chart"></i> Статистика використання</h1>
+<div class="row">
+<div class="col-md-6">
+<h3>Топ команд</h3>
+<table class="table">
+{% for cmd in command_stats %}<tr><td>{{cmd[0]}}</td><td>{{cmd[1]}}</td></tr>{% endfor %}
+</table>
+</div>
+</div>
+{% endblock %}
+
+
+

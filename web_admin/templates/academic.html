@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Академічний календар - Schedule Bot Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-calendar-range"></i> Академічний календар</h1>
+        {% if metadata %}
+        <p class="text-muted">Група: <strong>{{metadata.group_name}}</strong> | Навчальний рік: <strong>{{metadata.academic_year}}</strong></p>
+        {% endif %}
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPeriodModal">
+            <i class="bi bi-plus-circle"></i> Додати період
+        </button>
+    </div>
+</div>
+
+<!-- Timeline візуалізація -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5><i class="bi bi-calendar-check"></i> Графік навчального року</h5>
+            </div>
+            <div class="card-body">
+                {% for period in periods %}
+                <div class="mb-3 p-3 border rounded">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5>{{period.color}} {{period.name}}</h5>
+                            <p class="mb-1">
+                                <i class="bi bi-calendar"></i> 
+                                {{period.start_date}} - {{period.end_date}} ({{period.weeks}} тижнів)
+                            </p>
+                            <p class="text-muted mb-0"><small>{{period.description}}</small></p>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-warning" onclick="editPeriod({{period.id}}, '{{period.period_id}}', '{{period.name}}', '{{period.start_date}}', '{{period.end_date}}', {{period.weeks}}, '{{period.color}}', '{{period.description}}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{url_for('delete_academic_period', period_id=period.id)}}" style="display:inline;" onsubmit="return confirm('Видалити період {{period.name}}?');">
+                                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-center text-muted">Періодів немає. Додайте перший період.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Таблиця періодів -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-table"></i> Всі періоди ({{periods|length}})</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Колір</th>
+                            <th>Назва</th>
+                            <th>Початок</th>
+                            <th>Кінець</th>
+                            <th>Тижнів</th>
+                            <th>Опис</th>
+                            <th>Дії</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for period in periods %}
+                        <tr>
+                            <td style="font-size:1.5em;">{{period.color}}</td>
+                            <td><strong>{{period.name}}</strong></td>
+                            <td>{{period.start_date}}</td>
+                            <td>{{period.end_date}}</td>
+                            <td>{{period.weeks}}</td>
+                            <td><small>{{period.description[:50]}}{% if period.description|length > 50 %}...{% endif %}</small></td>
+                            <td>
+                                <button class="btn btn-sm btn-warning" onclick="editPeriod({{period.id}}, '{{period.period_id}}', '{{period.name}}', '{{period.start_date}}', '{{period.end_date}}', {{period.weeks}}, '{{period.color}}', '{{period.description}}')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form method="POST" action="{{url_for('delete_academic_period', period_id=period.id)}}" style="display:inline;" onsubmit="return confirm('Видалити період?');">
+                                    <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                                    <button type="submit" class="btn btn-sm btn-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center">Періодів немає</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal додавання періоду -->
+<div class="modal fade" id="addPeriodModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Додати академічний період</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{url_for('add_academic_period')}}">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">ID періоду (латиницею, без пробілів)</label>
+                        <input type="text" class="form-control" name="period_id" placeholder="theoretical_study_1" required>
+                        <small class="text-muted">Приклад: session_1, winter_holidays</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Назва періоду</label>
+                        <input type="text" class="form-control" name="name" placeholder="Теоретичне навчання (осінь)" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Дата початку</label>
+                            <input type="date" class="form-control" name="start_date" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Дата кінця</label>
+                            <input type="date" class="form-control" name="end_date" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Кількість тижнів</label>
+                            <input type="number" class="form-control" name="weeks" min="1" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Колір (emoji)</label>
+                            <select class="form-select" name="color">
+                                <option value="🟦">🟦 Синій (навчання)</option>
+                                <option value="🔴">🔴 Червоний (сесія)</option>
+                                <option value="🟢">🟢 Зелений (канікули)</option>
+                                <option value="🔵">🔵 Блакитний (практика)</option>
+                                <option value="🟡">🟡 Жовтий</option>
+                                <option value="🟣">🟣 Фіолетовий</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Опис</label>
+                        <textarea class="form-control" name="description" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Додати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal редагування періоду -->
+<div class="modal fade" id="editPeriodModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Редагувати період</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="editPeriodForm">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Назва періоду</label>
+                        <input type="text" class="form-control" name="name" id="edit_period_name" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Дата початку</label>
+                            <input type="date" class="form-control" name="start_date" id="edit_period_start" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Дата кінця</label>
+                            <input type="date" class="form-control" name="end_date" id="edit_period_end" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Кількість тижнів</label>
+                            <input type="number" class="form-control" name="weeks" id="edit_period_weeks" min="1" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Колір (emoji)</label>
+                        <select class="form-select" name="color" id="edit_period_color">
+                            <option value="🟦">🟦 Синій (навчання)</option>
+                            <option value="🔴">🔴 Червоний (сесія)</option>
+                            <option value="🟢">🟢 Зелений (канікули)</option>
+                            <option value="🔵">🔵 Блакитний (практика)</option>
+                            <option value="🟡">🟡 Жовтий</option>
+                            <option value="🟣">🟣 Фіолетовий</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Опис</label>
+                        <textarea class="form-control" name="description" id="edit_period_description" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-warning">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editPeriod(id, period_id, name, start, end, weeks, color, description) {
+    document.getElementById('editPeriodForm').action = '/academic/edit/' + id;
+    document.getElementById('edit_period_name').value = name;
+    document.getElementById('edit_period_start').value = start;
+    document.getElementById('edit_period_end').value = end;
+    document.getElementById('edit_period_weeks').value = weeks;
+    document.getElementById('edit_period_color').value = color;
+    document.getElementById('edit_period_description').value = description;
+    
+    new bootstrap.Modal(document.getElementById('editPeriodModal')).show();
+}
+</script>
+{% endblock %}
+

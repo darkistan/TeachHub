@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Schedule Bot Admin{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-speedometer2"></i> Dashboard</h1>
+    </div>
+</div>
+
+<!-- Статистика -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-people"></i> Користувачі</h5>
+                <h2>{{ stats.users_count or 0 }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-clock"></i> Запити</h5>
+                <h2>{{ stats.pending_requests or 0 }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-calendar3"></i> Заняття</h5>
+                <h2>{{ stats.schedule_entries or 0 }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-megaphone"></i> Оголошення</h5>
+                <h2>{{ stats.announcements_count or 0 }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Поточний стан -->
+{% if metadata %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5><i class="bi bi-info-circle"></i> Поточний стан системи</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <strong>Група:</strong> {{ metadata.group_name }}
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Навчальний рік:</strong> {{ metadata.academic_year }}
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Тип тижня:</strong> 
+                        {% if metadata.current_week == 'numerator' %}
+                            📚 Чисельник
+                        {% else %}
+                            📖 Знаменник
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Останні логи -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-file-text"></i> Останні логи системи</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Час</th>
+                                <th>Рівень</th>
+                                <th>Повідомлення</th>
+                                <th>User ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in logs %}
+                            <tr class="log-{{ log.level.lower() }}">
+                                <td>{{ log.timestamp.strftime('%d.%m %H:%M:%S') }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'danger' if log.level == 'ERROR' else ('warning' if log.level == 'WARNING' else ('secondary' if log.level == 'SECURITY' else 'info')) }}">
+                                        {{ log.level }}
+                                    </span>
+                                </td>
+                                <td>{{ log.message[:100] }}{% if log.message|length > 100 %}...{% endif %}</td>
+                                <td>{{ log.user_id or '-' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center">Логів немає</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <a href="{{ url_for('logs') }}" class="btn btn-sm btn-outline-primary">Переглянути всі логи</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+

@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+*.egg-info/
+
+# Конфігурація (секрети)
+config.env
+*.env
+!config.env.example
+
+# База даних
+*.db
+*.db-wal
+*.db-shm
+schedule_bot.db
+
+# Логи
+logs.txt
+*.log
+
+# Backup
+backup/
+*.backup
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# JSON дані (після міграції)
+allowed_users.json
+schedule.json
+announcements.json
+schedule_data.json
+notification_history.json

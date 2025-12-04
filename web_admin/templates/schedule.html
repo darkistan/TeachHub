@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Розклад - Schedule Bot Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-calendar3"></i> Управління розкладом</h1>
+        {% if metadata %}
+        <p class="text-muted">Поточний тиждень: 
+            <strong>{{ 'Чисельник' if metadata.current_week == 'numerator' else 'Знаменник' }}</strong>
+        </p>
+        {% endif %}
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addLessonModal">
+            <i class="bi bi-plus-circle"></i> Додати заняття
+        </button>
+    </div>
+</div>
+
+<!-- Tabs для днів тижня -->
+<ul class="nav nav-tabs" role="tablist">
+    {% for day in days_order %}
+    <li class="nav-item">
+        <button class="nav-link {% if loop.first %}active{% endif %}" 
+                data-bs-toggle="tab" data-bs-target="#day-{{day}}" type="button">
+            {{ day_names[day] }}
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content mt-3">
+    {% for day in days_order %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="day-{{day}}">
+        
+        <!-- Чисельник -->
+        <h4 class="mt-3">📚 Чисельник</h4>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Час</th>
+                        <th>Предмет</th>
+                        <th>Тип</th>
+                        <th>Викладач</th>
+                        <th>Телефон</th>
+                        <th>Google Meet</th>
+                        <th>Контроль</th>
+                        <th>Дії</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in schedule[day]['numerator'] %}
+                    <tr>
+                        <td><strong>{{entry.time}}</strong></td>
+                        <td>{{entry.subject}}</td>
+                        <td><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td>{{entry.teacher}}</td>
+                        <td><small>{{entry.teacher_phone}}</small></td>
+                        <td>
+                            {% if entry.conference_link %}
+                            <a href="{{entry.conference_link}}" target="_blank" class="btn btn-sm btn-outline-success">
+                                <i class="bi bi-camera-video"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', '{{entry.teacher}}', '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{url_for('delete_schedule_entry', entry_id=entry.id)}}" style="display:inline;" onsubmit="return confirm('Видалити заняття {{entry.subject}}?');">
+                                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">Занять немає</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Знаменник -->
+        <h4 class="mt-4">📖 Знаменник</h4>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Час</th>
+                        <th>Предмет</th>
+                        <th>Тип</th>
+                        <th>Викладач</th>
+                        <th>Телефон</th>
+                        <th>Google Meet</th>
+                        <th>Контроль</th>
+                        <th>Дії</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in schedule[day]['denominator'] %}
+                    <tr>
+                        <td><strong>{{entry.time}}</strong></td>
+                        <td>{{entry.subject}}</td>
+                        <td><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td>{{entry.teacher}}</td>
+                        <td><small>{{entry.teacher_phone}}</small></td>
+                        <td>
+                            {% if entry.conference_link %}
+                            <a href="{{entry.conference_link}}" target="_blank" class="btn btn-sm btn-outline-success">
+                                <i class="bi bi-camera-video"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', '{{entry.teacher}}', '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <form method="POST" action="{{url_for('delete_schedule_entry', entry_id=entry.id)}}" style="display:inline;" onsubmit="return confirm('Видалити заняття {{entry.subject}}?');">
+                                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted">Занять немає</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Modal для додавання заняття -->
+<div class="modal fade" id="addLessonModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Додати заняття</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{url_for('add_schedule_entry')}}">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">День тижня</label>
+                            <select class="form-select" name="day_of_week" required>
+                                {% for day in days_order %}
+                                <option value="{{day}}">{{day_names[day]}}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Час</label>
+                            <input type="text" class="form-control" name="time" placeholder="08:30-09:50" required>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Тип тижня</label>
+                            <select class="form-select" name="week_type" required>
+                                <option value="numerator">Чисельник</option>
+                                <option value="denominator">Знаменник</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Предмет</label>
+                        <input type="text" class="form-control" name="subject" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Тип заняття</label>
+                            <select class="form-select" name="lesson_type" required>
+                                <option value="лекція">Лекція</option>
+                                <option value="практика">Практика</option>
+                                <option value="лабораторна">Лабораторна</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Тип контролю</label>
+                            <select class="form-select" name="exam_type">
+                                <option value="залік">Залік</option>
+                                <option value="екзамен">Екзамен</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Викладач</label>
+                        <input type="text" class="form-control" name="teacher" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Телефон викладача</label>
+                            <input type="text" class="form-control" name="teacher_phone">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Аудиторія</label>
+                            <input type="text" class="form-control" name="classroom">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Google Meet посилання</label>
+                        <input type="url" class="form-control" name="conference_link" placeholder="https://meet.google.com/...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Додати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal для редагування заняття -->
+<div class="modal fade" id="editLessonModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Редагувати заняття</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="editLessonForm">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">День тижня</label>
+                            <select class="form-select" name="day_of_week" id="edit_day" required>
+                                {% for day in days_order %}
+                                <option value="{{day}}">{{day_names[day]}}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Час</label>
+                            <input type="text" class="form-control" name="time" id="edit_time" required>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Тип тижня</label>
+                            <select class="form-select" name="week_type" id="edit_week_type" required>
+                                <option value="numerator">Чисельник</option>
+                                <option value="denominator">Знаменник</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Предмет</label>
+                        <input type="text" class="form-control" name="subject" id="edit_subject" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Тип заняття</label>
+                            <select class="form-select" name="lesson_type" id="edit_lesson_type" required>
+                                <option value="лекція">Лекція</option>
+                                <option value="практика">Практика</option>
+                                <option value="лабораторна">Лабораторна</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Тип контролю</label>
+                            <select class="form-select" name="exam_type" id="edit_exam_type">
+                                <option value="залік">Залік</option>
+                                <option value="екзамен">Екзамен</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Викладач</label>
+                        <input type="text" class="form-control" name="teacher" id="edit_teacher" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Телефон викладача</label>
+                            <input type="text" class="form-control" name="teacher_phone" id="edit_teacher_phone">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Аудиторія</label>
+                            <input type="text" class="form-control" name="classroom" id="edit_classroom">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Google Meet посилання</label>
+                        <input type="url" class="form-control" name="conference_link" id="edit_conference_link">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-warning">Зберегти зміни</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editLesson(id, day, time, subject, type, teacher, phone, classroom, meet, exam, week) {
+    document.getElementById('editLessonForm').action = '/schedule/edit/' + id;
+    document.getElementById('edit_day').value = day;
+    document.getElementById('edit_time').value = time;
+    document.getElementById('edit_subject').value = subject;
+    document.getElementById('edit_lesson_type').value = type;
+    document.getElementById('edit_teacher').value = teacher;
+    document.getElementById('edit_teacher_phone').value = phone;
+    document.getElementById('edit_classroom').value = classroom;
+    document.getElementById('edit_conference_link').value = meet;
+    document.getElementById('edit_exam_type').value = exam;
+    document.getElementById('edit_week_type').value = week;
+    
+    new bootstrap.Modal(document.getElementById('editLessonModal')).show();
+}
+</script>
+{% endblock %}
