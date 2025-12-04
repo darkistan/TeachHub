@@ -40,7 +40,7 @@
                         Оновлено: {{active_announcement.updated_at.strftime('%d.%m.%Y %H:%M')}}
                     </small>
                     <div>
-                        <button class="btn btn-sm btn-warning" onclick="editAnnouncement({{active_announcement.id}}, '{{active_announcement.content|replace('\n', '\\n')|replace('\"', '\&quot;')}}', '{{active_announcement.priority}}')">
+                        <button class="btn btn-sm btn-warning" onclick="editAnnouncement({{active_announcement.id}}, `{{active_announcement.content|replace('`', '\\`')}}`, '{{active_announcement.priority}}')">
                             <i class="bi bi-pencil"></i> Редагувати
                         </button>
                         <form method="POST" action="{{url_for('delete_announcement', ann_id=active_announcement.id)}}" style="display:inline;" onsubmit="return confirm('Видалити активне оголошення?');">
@@ -107,7 +107,7 @@
                                         </button>
                                     </form>
                                     {% endif %}
-                                    <button class="btn btn-sm btn-warning" onclick="editAnnouncement({{ann.id}}, '{{ann.content|replace('\n', '\\n')|replace('\"', '\&quot;')|replace(\"'\", \"\\'\")}}', '{{ann.priority}}')">
+                                    <button class="btn btn-sm btn-warning" onclick="editAnnouncement({{ann.id}}, `{{ann.content|replace('`', '\\`')}}`, '{{ann.priority}}')">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                     <form method="POST" action="{{url_for('delete_announcement', ann_id=ann.id)}}" style="display:inline;" onsubmit="return confirm('Видалити оголошення?');">
@@ -209,7 +209,7 @@
 <script>
 function editAnnouncement(id, content, priority) {
     document.getElementById('editAnnouncementForm').action = '/announcements/edit/' + id;
-    document.getElementById('edit_ann_content').value = content.replace(/\\n/g, '\n');
+    document.getElementById('edit_ann_content').value = content;
     document.getElementById('edit_ann_priority').value = priority;
     
     new bootstrap.Modal(document.getElementById('editAnnouncementModal')).show();
