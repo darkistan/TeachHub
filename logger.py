@@ -1,5 +1,5 @@
 """
-Модуль логування для Telegram-бота розкладу
+Модуль логування для TeachHub
 Підтримує запис логів у файл та SQLite базу даних
 """
 import logging
@@ -22,7 +22,7 @@ class BotLogger:
         """
         self.log_file = log_file
         self.use_db = use_db
-        self.logger = logging.getLogger("schedule_bot")
+        self.logger = logging.getLogger("teachhub")
         self.logger.setLevel(getattr(logging, log_level.upper()))
         
         # Налаштування форматування

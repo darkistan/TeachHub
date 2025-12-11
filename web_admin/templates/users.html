@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Користувачі - Schedule Bot Admin{% endblock %}
+{% block title %}Користувачі - TeachHub Admin{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -76,12 +76,9 @@
                         <input type="text" class="form-control" id="username" name="username" placeholder="username">
                     </div>
                     <div class="mb-3">
-                        <label for="role" class="form-label">Роль</label>
-                        <select class="form-select" id="role" name="role" required>
-                            <option value="user" selected>User (Студент)</option>
-                            <option value="control">Control (Батько)</option>
-                            <option value="admin">Admin (Адміністратор)</option>
-                        </select>
+                        <label for="full_name" class="form-label">ПІБ викладача</label>
+                        <input type="text" class="form-control" id="full_name" name="full_name" placeholder="Іванов Іван Іванович">
+                        <small class="text-muted">ПІБ призначається адміністратором</small>
                     </div>
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-plus"></i> Додати
@@ -96,17 +93,29 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <h5><i class="bi bi-list"></i> Користувачі з доступом ({{ users|length }})</h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="bi bi-list"></i> Користувачі з доступом (<span id="users_count">{{ users|length }}</span>)</h5>
+                <div class="input-group" style="max-width: 300px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="users_search" placeholder="Пошук по ПІБ, username, ID...">
+                </div>
             </div>
             <div class="card-body">
-                <table class="table table-hover">
+                <table class="table table-hover" id="users_table">
                     <thead>
                         <tr>
-                            <th>User ID</th>
-                            <th>Username</th>
-                            <th>Роль</th>
-                            <th>Дата схвалення</th>
+                            <th style="cursor: pointer;" onclick="sortTable(0)">
+                                User ID <i class="bi bi-arrow-down-up"></i>
+                            </th>
+                            <th style="cursor: pointer;" onclick="sortTable(1)">
+                                Username <i class="bi bi-arrow-down-up"></i>
+                            </th>
+                            <th style="cursor: pointer;" onclick="sortTable(2)">
+                                ПІБ <i class="bi bi-arrow-down-up"></i>
+                            </th>
+                            <th style="cursor: pointer;" onclick="sortTable(3)">
+                                Дата схвалення <i class="bi bi-arrow-down-up"></i>
+                            </th>
                             <th>Оповіщення</th>
                             <th>Дії</th>
                         </tr>
@@ -117,13 +126,10 @@
                             <td>{{ user.user_id }}</td>
                             <td>@{{ user.username }}</td>
                             <td>
-                                {% set user_role = user.role if user.role else 'user' %}
-                                {% if user_role == 'admin' %}
-                                    <span class="badge bg-danger">Admin</span>
-                                {% elif user_role == 'control' %}
-                                    <span class="badge bg-primary">Control</span>
+                                {% if user.full_name %}
+                                    {{ user.full_name }}
                                 {% else %}
-                                    <span class="badge bg-secondary">User</span>
+                                    <span class="text-muted">Не встановлено</span>
                                 {% endif %}
                             </td>
                             <td>{{ user.approved_at.strftime('%d.%m.%Y %H:%M') if user.approved_at else '-' }}</td>
@@ -142,11 +148,11 @@
                                 </form>
                             </td>
                             <td>
-                                <button class="btn btn-sm btn-warning" onclick="showChangeRoleModal({{ user.user_id }}, '{{ user.role if user.role else 'user' }}', '@{{ user.username }}')">
-                                    <i class="bi bi-person-gear"></i> Змінити роль
+                                <button class="btn btn-sm btn-warning" onclick="showEditFullNameModal({{ user.user_id }}, '{{ user.full_name or '' }}', '@{{ user.username }}')">
+                                    <i class="bi bi-pencil"></i> Редагувати ПІБ
                                 </button>
                                 <form method="POST" action="{{ url_for('delete_user', user_id=user.user_id) }}" 
-                                      onsubmit="return confirm('Видалити користувача @{{ user.username }}?');" style="display:inline;">
+                                      onsubmit="return confirm('Видалити викладача @{{ user.username }}?');" style="display:inline;">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <button type="submit" class="btn btn-sm btn-danger">
                                         <i class="bi bi-trash"></i> Видалити
@@ -166,25 +172,22 @@
     </div>
 </div>
 
-<!-- Модальне вікно зміни ролі -->
-<div class="modal fade" id="changeRoleModal" tabindex="-1">
+<!-- Модальне вікно редагування ПІБ -->
+<div class="modal fade" id="editFullNameModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Змінити роль користувача</h5>
+                <h5 class="modal-title">Редагувати ПІБ викладача</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" id="changeRoleForm">
+            <form method="POST" id="editFullNameForm">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="modal-body">
-                    <p>Користувач: <strong id="changeRoleUsername"></strong></p>
+                    <p>Викладач: <strong id="editFullNameUsername"></strong></p>
                     <div class="mb-3">
-                        <label for="new_role" class="form-label">Нова роль</label>
-                        <select class="form-select" id="new_role" name="role" required>
-                            <option value="user">User (Студент)</option>
-                            <option value="control">Control (Батько)</option>
-                            <option value="admin">Admin (Адміністратор)</option>
-                        </select>
+                        <label for="new_full_name" class="form-label">ПІБ викладача</label>
+                        <input type="text" class="form-control" id="new_full_name" name="full_name" placeholder="Іванов Іван Іванович">
+                        <small class="text-muted">Залиште порожнім, щоб видалити ПІБ</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -197,12 +200,77 @@
 </div>
 
 <script>
-function showChangeRoleModal(userId, currentRole, username) {
-    document.getElementById('changeRoleUsername').textContent = username;
-    document.getElementById('new_role').value = currentRole;
-    document.getElementById('changeRoleForm').action = `/users/change-role/${userId}`;
-    new bootstrap.Modal(document.getElementById('changeRoleModal')).show();
-}
+    let sortDirection = {};
+    
+    function sortTable(columnIndex) {
+        const table = document.getElementById('users_table');
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        
+        // Визначаємо напрямок сортування
+        if (!sortDirection[columnIndex] || sortDirection[columnIndex] === 'desc') {
+            sortDirection[columnIndex] = 'asc';
+        } else {
+            sortDirection[columnIndex] = 'desc';
+        }
+        
+        // Сортуємо рядки
+        rows.sort((a, b) => {
+            const aText = a.cells[columnIndex].textContent.trim();
+            const bText = b.cells[columnIndex].textContent.trim();
+            
+            // Для числових значень (User ID)
+            if (columnIndex === 0) {
+                const aNum = parseInt(aText) || 0;
+                const bNum = parseInt(bText) || 0;
+                return sortDirection[columnIndex] === 'asc' ? aNum - bNum : bNum - aNum;
+            }
+            
+            // Для дат (Дата схвалення)
+            if (columnIndex === 3) {
+                const aDate = new Date(aText.split('.').reverse().join('-'));
+                const bDate = new Date(bText.split('.').reverse().join('-'));
+                return sortDirection[columnIndex] === 'asc' ? aDate - bDate : bDate - aDate;
+            }
+            
+            // Для текстових значень
+            if (sortDirection[columnIndex] === 'asc') {
+                return aText.localeCompare(bText, 'uk');
+            } else {
+                return bText.localeCompare(aText, 'uk');
+            }
+        });
+        
+        // Оновлюємо таблицю
+        rows.forEach(row => tbody.appendChild(row));
+    }
+    
+    // Пошук
+    document.getElementById('users_search')?.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const table = document.getElementById('users_table');
+        const rows = table.querySelectorAll('tbody tr');
+        let visibleCount = 0;
+        
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            if (text.includes(searchTerm)) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('users_count').textContent = visibleCount;
+    });
+    
+    function showEditFullNameModal(userId, currentFullName, username) {
+        document.getElementById('editFullNameUsername').textContent = username;
+        document.getElementById('new_full_name').value = currentFullName || '';
+        document.getElementById('editFullNameForm').action = `/users/update-full-name/${userId}`;
+        new bootstrap.Modal(document.getElementById('editFullNameModal')).show();
+    }
 </script>
 {% endblock %}
 

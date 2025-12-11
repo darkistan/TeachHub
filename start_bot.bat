@@ -2,7 +2,7 @@
 chcp 65001 > nul
 cls
 echo =============================================================
-echo    ZAPUSK TELEGRAM BOT - Schedule Bot v2.0
+echo    ZAPUSK TELEGRAM BOT - TeachHub v2.0
 echo =============================================================
 echo.
 

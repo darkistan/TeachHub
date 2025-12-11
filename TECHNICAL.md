@@ -19,7 +19,6 @@ schedule_bot/
 ├── 💾 База даних
 │   ├── models.py              # 10 SQLAlchemy моделей
 │   ├── database.py            # Управління БД + WAL
-│   ├── check_db_status.py     # Діагностика
 │   └── schedule_bot.db        # SQLite БД
 │
 ├── 🔧 Модулі бота
@@ -156,9 +155,7 @@ PRAGMA synchronous=NORMAL   # Баланс
 ```
 
 ### Перевірка:
-```batch
-venv\Scripts\python.exe check_db_status.py check
-```
+База даних автоматично налаштовується при запуску бота через `database.py`.
 
 ---
 
@@ -363,28 +360,6 @@ def new_page():
 
 ## 🛠️ Утиліти
 
-### check_db_status.py
-
-**Команди:**
-```batch
-# Діагностика БД
-venv\Scripts\python.exe check_db_status.py check
-
-# Увімкнути WAL mode
-venv\Scripts\python.exe check_db_status.py wal
-
-# Checkpoint WAL журналу
-venv\Scripts\python.exe check_db_status.py checkpoint
-```
-
-**Що перевіряє:**
-- Journal mode (має бути WAL)
-- Busy timeout (має бути ≥30000)
-- Foreign keys (увімкнені)
-- Таблиці та кількість записів
-- WAL файли
-
----
 
 ## 📊 Залежності
 
@@ -412,7 +387,7 @@ alembic==1.13.0              # Міграції БД (опціонально)
 ```env
 # Telegram
 TELEGRAM_BOT_TOKEN=7946502371:AAE...    # Обов'язково
-ADMIN_USER_ID=440127888                # Обов'язково
+# ADMIN_USER_ID більше не використовується - адміністрація тільки через веб-інтерфейс
 
 # База даних
 DATABASE_URL=sqlite:///schedule_bot.db  # Опціонально
@@ -427,7 +402,7 @@ FLASK_SECRET_KEY=random-secret-key     # Опціонально
 
 **Де взяти токени:**
 - `TELEGRAM_BOT_TOKEN` - @BotFather в Telegram
-- `ADMIN_USER_ID` - @userinfobot в Telegram
+- `ADMIN_USER_ID` - більше не використовується (адміністрація тільки через веб-інтерфейс)
 - `ALERTS_API_TOKEN` - https://alerts.in.ua/
 
 ---
@@ -496,12 +471,10 @@ venv\Scripts\python.exe run_web.py
 
 **Діагностика:**
 ```batch
-venv\Scripts\python.exe check_db_status.py check
 ```
 
 **Рішення 1 - Увімкнути WAL:**
 ```batch
-venv\Scripts\python.exe check_db_status.py wal
 ```
 
 **Рішення 2 - Перезапустити:**
@@ -513,8 +486,6 @@ start_all.bat
 
 **Рішення 3 - Checkpoint:**
 ```batch
-venv\Scripts\python.exe check_db_status.py checkpoint
-```
 
 ---
 

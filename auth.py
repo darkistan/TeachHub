@@ -244,18 +244,76 @@ class AuthManager:
         role = self.get_user_role(user_id)
         return role == 'admin'
     
-    def is_control(self, user_id: int) -> bool:
+    def get_user_full_name(self, user_id: int) -> Optional[str]:
         """
-        Перевірка чи користувач є батьком (control)
+        Отримання ПІБ викладача
         
         Args:
             user_id: ID користувача
             
         Returns:
-            True якщо користувач батько
+            ПІБ викладача або None
         """
-        role = self.get_user_role(user_id)
-        return role == 'control'
+        try:
+            with get_session() as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if user:
+                    return getattr(user, 'full_name', None)
+                return None
+        except Exception as e:
+            logger.log_error(f"Помилка отримання ПІБ користувача {user_id}: {e}")
+            return None
+    
+    def update_user_full_name(self, user_id: int, full_name: str) -> bool:
+        """
+        Оновлення ПІБ викладача
+        
+        Args:
+            user_id: ID користувача
+            full_name: ПІБ викладача
+            
+        Returns:
+            True якщо оновлено успішно
+        """
+        try:
+            with get_session() as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if user:
+                    user.full_name = full_name
+                    session.commit()
+                    logger.log_info(f"Оновлено ПІБ для користувача {user_id}: {full_name}")
+                    return True
+                return False
+        except Exception as e:
+            logger.log_error(f"Помилка оновлення ПІБ користувача {user_id}: {e}")
+            return False
+    
+    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Отримання повної інформації про користувача
+        
+        Args:
+            user_id: ID користувача
+            
+        Returns:
+            Словник з інформацією про користувача або None
+        """
+        try:
+            with get_session() as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                if user:
+                    return {
+                        'user_id': user.user_id,
+                        'username': user.username,
+                        'full_name': getattr(user, 'full_name', None),
+                        'role': getattr(user, 'role', 'user') or 'user',
+                        'approved_at': user.approved_at.isoformat() if user.approved_at else None,
+                        'notifications_enabled': user.notifications_enabled
+                    }
+                return None
+        except Exception as e:
+            logger.log_error(f"Помилка отримання користувача {user_id}: {e}")
+            return None
     
     def is_user(self, user_id: int) -> bool:
         """

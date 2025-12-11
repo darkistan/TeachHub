@@ -2,7 +2,7 @@
 chcp 65001 > nul
 cls
 echo =============================================================
-echo    ZAPUSK WEB INTERFACE - Schedule Bot Admin v2.0
+echo    ZAPUSK WEB INTERFACE - TeachHub Admin v2.0
 echo =============================================================
 echo.
 

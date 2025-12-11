@@ -1,14 +1,23 @@
 """
 Модуль для управління оголошеннями через БД
+Оголошення відправляються прямо в чат користувачам через Telegram Bot API
 """
+import os
+import requests
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from dotenv import load_dotenv
 
 from database import get_session
-from models import Announcement, User
+from models import Announcement, AnnouncementRecipient, User
 from logger import logger
-from csrf_manager import csrf_manager
+
+# Завантажуємо змінні середовища
+load_dotenv("config.env")
+
+# Telegram Bot API URL
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
 
 class AnnouncementManager:
@@ -18,13 +27,34 @@ class AnnouncementManager:
         """Ініціалізація менеджера оголошень"""
         pass
     
-    def create_announcement(self, content: str, author_id: int, author_username: str, priority: str = 'normal') -> bool:
-        """Створення нового оголошення"""
+    def send_announcement_to_users(
+        self, 
+        recipient_user_ids: List[int], 
+        content: str, 
+        priority: str,
+        author_id: int, 
+        author_username: str
+    ) -> Dict[str, Any]:
+        """
+        Відправка оголошення вибраним користувачам через Telegram Bot API
+        
+        Args:
+            recipient_user_ids: Список user_id отримувачів
+            content: Текст оголошення
+            priority: Пріоритет (normal, important, urgent)
+            author_id: ID автора
+            author_username: Username автора
+            
+        Returns:
+            Словник зі статистикою відправки: {'sent': int, 'failed': int, 'announcement_id': int}
+        """
+        if not TELEGRAM_BOT_TOKEN:
+            logger.log_error("TELEGRAM_BOT_TOKEN не встановлено в config.env")
+            return {'sent': 0, 'failed': len(recipient_user_ids), 'announcement_id': None}
+        
         try:
             with get_session() as session:
-                # Деактивуємо всі попередні оголошення
-                session.query(Announcement).update({'is_active': False})
-                
+                # Створюємо запис оголошення
                 announcement = Announcement(
                     content=content,
                     author_id=author_id,
@@ -32,194 +62,201 @@ class AnnouncementManager:
                     priority=priority,
                     created_at=datetime.now(),
                     updated_at=datetime.now(),
-                    is_active=True
+                    sent_at=datetime.now(),
+                    recipient_count=len(recipient_user_ids)
                 )
                 session.add(announcement)
+                session.flush()  # Отримуємо ID без commit
+                
+                # Формуємо повідомлення з пріоритетом
+                priority_emoji = {
+                    'urgent': '🔴 ТЕРМІНОВЕ',
+                    'important': '🟡 ВАЖЛИВЕ',
+                    'normal': '📋 Оголошення'
+                }.get(priority, '📋 Оголошення')
+                
+                message_text = f"{priority_emoji}\n\n{content}\n\n👤 Автор: @{author_username}"
+                
+                # Відправляємо повідомлення кожному отримувачу
+                sent_count = 0
+                failed_count = 0
+                
+                for recipient_id in recipient_user_ids:
+                    try:
+                        # Відправляємо через Telegram Bot API
+                        response = requests.post(
+                            f"{TELEGRAM_API_URL}/sendMessage",
+                            json={
+                                'chat_id': recipient_id,
+                                'text': message_text,
+                                'parse_mode': 'HTML'
+                            },
+                            timeout=10
+                        )
+                        
+                        if response.status_code == 200:
+                            status = 'sent'
+                            sent_count += 1
+                        else:
+                            error_data = response.json()
+                            if error_data.get('error_code') == 403:
+                                status = 'blocked'  # Користувач заблокував бота
+                            else:
+                                status = 'failed'
+                            failed_count += 1
+                            logger.log_warning(f"Помилка відправки оголошення {announcement.id} користувачу {recipient_id}: {error_data.get('description', 'Unknown error')}")
+                        
+                        # Зберігаємо історію відправки
+                        recipient = AnnouncementRecipient(
+                            announcement_id=announcement.id,
+                            recipient_user_id=recipient_id,
+                            sent_at=datetime.now(),
+                            status=status
+                        )
+                        session.add(recipient)
+                        
+                    except requests.exceptions.RequestException as e:
+                        failed_count += 1
+                        status = 'failed'
+                        logger.log_error(f"Помилка відправки оголошення {announcement.id} користувачу {recipient_id}: {e}")
+                        
+                        # Зберігаємо історію навіть при помилці
+                        recipient = AnnouncementRecipient(
+                            announcement_id=announcement.id,
+                            recipient_user_id=recipient_id,
+                            sent_at=datetime.now(),
+                            status=status
+                        )
+                        session.add(recipient)
+                
+                # Оновлюємо кількість отримувачів
+                announcement.recipient_count = sent_count
                 session.commit()
                 
-                logger.log_info(f"Створено оголошення адміном {author_username}")
-                return True
+                logger.log_info(f"Оголошення {announcement.id} відправлено: {sent_count} успішно, {failed_count} помилок")
+                
+                return {
+                    'sent': sent_count,
+                    'failed': failed_count,
+                    'announcement_id': announcement.id
+                }
+            
         except Exception as e:
-            logger.log_error(f"Помилка створення оголошення: {e}")
-            return False
+            logger.log_error(f"Помилка відправки оголошення: {e}")
+            return {'sent': 0, 'failed': len(recipient_user_ids), 'announcement_id': None}
     
-    def update_announcement(self, announcement_id: int, content: str, author_id: int, author_username: str) -> bool:
-        """Оновлення існуючого оголошення"""
+    def get_announcement_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Отримання історії відправлених оголошень
+        
+        Args:
+            limit: Максимальна кількість записів
+            
+        Returns:
+            Список оголошень з інформацією про відправку
+        """
         try:
             with get_session() as session:
-                announcement = session.query(Announcement).filter(Announcement.id == announcement_id).first()
-                if announcement:
-                    announcement.content = content
-                    announcement.author_id = author_id
-                    announcement.author_username = author_username
-                    announcement.updated_at = datetime.now()
-                    session.commit()
-                    
-                    logger.log_info(f"Оновлено оголошення {announcement_id}")
-                    return True
-                return False
+                announcements = session.query(Announcement).order_by(
+                    Announcement.sent_at.desc()
+                ).limit(limit).all()
+                
+                result = []
+                for ann in announcements:
+                    result.append({
+                        'id': ann.id,
+                        'content': ann.content[:100] + '...' if len(ann.content) > 100 else ann.content,
+                        'author_username': ann.author_username,
+                        'priority': ann.priority,
+                        'sent_at': ann.sent_at if ann.sent_at else None,
+                        'recipient_count': ann.recipient_count or 0,
+                        'created_at': ann.created_at
+                    })
+                
+                return result
         except Exception as e:
-            logger.log_error(f"Помилка оновлення оголошення: {e}")
-            return False
+            logger.log_error(f"Помилка отримання історії оголошень: {e}")
+            return []
+    
+    def get_announcement_recipients(self, announcement_id: int) -> List[Dict[str, Any]]:
+        """
+        Отримання списку отримувачів конкретного оголошення
+        
+        Args:
+            announcement_id: ID оголошення
+            
+        Returns:
+            Список отримувачів зі статусом відправки
+        """
+        try:
+            with get_session() as session:
+                recipients = session.query(AnnouncementRecipient, User).join(
+                    User, AnnouncementRecipient.recipient_user_id == User.user_id
+                ).filter(
+                    AnnouncementRecipient.announcement_id == announcement_id
+                ).all()
+                
+                result = []
+                for recipient, user in recipients:
+                    result.append({
+                        'recipient_user_id': recipient.recipient_user_id,
+                        'username': user.username,
+                        'full_name': user.full_name,
+                        'sent_at': recipient.sent_at,
+                        'status': recipient.status
+                    })
+                
+                return result
+        except Exception as e:
+            logger.log_error(f"Помилка отримання отримувачів оголошення {announcement_id}: {e}")
+            return []
     
     def delete_announcement(self, announcement_id: int) -> bool:
-        """Видалення оголошення"""
+        """Видалення оголошення та всіх пов'язаних записів"""
         try:
             with get_session() as session:
+                # Видаляємо отримувачів
+                session.query(AnnouncementRecipient).filter(
+                    AnnouncementRecipient.announcement_id == announcement_id
+                ).delete()
+                
+                # Видаляємо оголошення
                 announcement = session.query(Announcement).filter(Announcement.id == announcement_id).first()
                 if announcement:
                     session.delete(announcement)
                     session.commit()
-                    logger.log_info(f"Видалено оголошення {announcement_id}")
-                    return True
-                return False
+                logger.log_info(f"Видалено оголошення {announcement_id}")
+                return True
+            return False
         except Exception as e:
             logger.log_error(f"Помилка видалення оголошення: {e}")
             return False
     
-    def get_current_announcement(self) -> Optional[Dict[str, Any]]:
-        """Отримання поточного активного оголошення"""
+    def get_all_teachers(self) -> List[Dict[str, Any]]:
+        """
+        Отримання списку всіх викладачів (всі користувачі)
+        
+        Returns:
+            Список викладачів з user_id, username та full_name
+        """
         try:
             with get_session() as session:
-                announcement = session.query(Announcement).filter(Announcement.is_active == True).first()
-                if announcement:
-                    return {
-                        'id': announcement.id,
-                        'content': announcement.content,
-                        'author_id': announcement.author_id,
-                        'author_username': announcement.author_username,
-                        'priority': announcement.priority,
-                        'created_at': announcement.created_at.isoformat(),
-                        'updated_at': announcement.updated_at.isoformat()
-                    }
-                return None
+                # Отримуємо всіх користувачів (не тільки з role='user')
+                teachers = session.query(User).all()
+                
+                result = []
+                for teacher in teachers:
+                    result.append({
+                        'user_id': teacher.user_id,
+                        'username': teacher.username or f"user_{teacher.user_id}",
+                        'full_name': getattr(teacher, 'full_name', None)
+                    })
+                
+                return result
         except Exception as e:
-            logger.log_error(f"Помилка отримання оголошення: {e}")
-            return None
-    
-    def create_announcement_keyboard(self, user_id: int, is_admin: bool = False) -> InlineKeyboardMarkup:
-        """Створення клавіатури для перегляду оголошення"""
-        keyboard = []
+            logger.log_error(f"Помилка отримання списку викладачів: {e}")
+            return []
         
-        if is_admin:
-            current = self.get_current_announcement()
-            if current:
-                keyboard.extend([
-                    [InlineKeyboardButton("✏️ Редагувати оголошення", 
-                                        callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_edit"))],
-                    [InlineKeyboardButton("🗑️ Видалити оголошення", 
-                                        callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_delete"))],
-                    [InlineKeyboardButton("📢 Надіслати сповіщення", 
-                                        callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_notify"))]
-                ])
-            else:
-                keyboard.append([InlineKeyboardButton("➕ Створити оголошення", 
-                                                    callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_create"))])
-        
-        keyboard.append([InlineKeyboardButton("🔙 Назад в меню", 
-                                            callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_menu"))])
-        
-        return InlineKeyboardMarkup(keyboard)
-    
-    def create_announcement_management_keyboard(self, user_id: int) -> InlineKeyboardMarkup:
-        """Створення клавіатури для управління оголошеннями"""
-        current = self.get_current_announcement()
-        keyboard = []
-        
-        if current:
-            keyboard.extend([
-                [InlineKeyboardButton("✏️ Редагувати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_edit"))],
-                [InlineKeyboardButton("🗑️ Видалити", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_delete"))],
-                [InlineKeyboardButton("📢 Надіслати", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_notify"))]
-            ])
-        else:
-            keyboard.append([InlineKeyboardButton("➕ Створити", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "ann_create"))])
-        
-        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_admin"))])
-        
-        return InlineKeyboardMarkup(keyboard)
-    
-    def format_announcement_message(self) -> str:
-        """Формування повідомлення з оголошенням"""
-        current = self.get_current_announcement()
-        
-        if not current:
-            return "📋 **Дошка оголошень**\n\n📭 Оголошень поки немає."
-        
-        content = current["content"]
-        created_at = datetime.fromisoformat(current["created_at"]).strftime("%d.%m.%Y %H:%M")
-        updated_at = datetime.fromisoformat(current["updated_at"]).strftime("%d.%m.%Y %H:%M")
-        author = current["author_username"]
-        priority = current.get("priority", "normal")
-        
-        # Визначаємо emoji та текст пріоритету
-        priority_display = {
-            'urgent': '🔴 **ТЕРМІНОВЕ**',
-            'important': '🟡 **ВАЖЛИВЕ**',
-            'normal': '📋 **Оголошення**'
-        }.get(priority, '📋 **Оголошення**')
-        
-        escaped_content = self._escape_markdown(content)
-        escaped_author = self._escape_markdown(author)
-        
-        date_info = f"📅 Створено: {created_at}"
-        if created_at != updated_at:
-            date_info += f"\n✏️ Оновлено: {updated_at}"
-        
-        # Формуємо повідомлення з пріоритетом
-        message_parts = [priority_display]
-        
-        # Додаємо рамку для термінових оголошень
-        if priority == 'urgent':
-            message_parts.append("⚠️" * 10)
-        
-        message_parts.extend([
-            "─" * 25,
-            "",
-            escaped_content,
-            "",
-            "─" * 25,
-            f"👤 Автор: @{escaped_author}",
-            date_info
-        ])
-        
-        return "\n".join(message_parts)
-    
-    def _escape_markdown(self, text: str) -> str:
-        """Екранування спеціальних символів Markdown"""
-        if not text:
-            return text
-        
-        escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-        for char in escape_chars:
-            text = text.replace(char, f'\\{char}')
-        return text
-    
-    async def send_notification_to_all_users(self, bot, users: List[Dict[str, Any]]) -> int:
-        """Надсилання сповіщення про оголошення всім користувачам"""
-        current = self.get_current_announcement()
-        if not current:
-            return 0
-        
-        notification_text = (
-            "📢 **ОНОВЛЕННЯ НА ДОШЦІ ОГОЛОШЕНЬ**\n\n"
-            "У дошці оголошень є нове або оновлене оголошення\\!\n\n"
-            "Натисніть /menu та виберіть '📋 Дошка оголошень' для перегляду\\."
-        )
-        
-        sent_count = 0
-        for user in users:
-            try:
-                user_id = user.get("user_id")
-                if user_id:
-                    await bot.send_message(chat_id=user_id, text=notification_text, parse_mode='Markdown')
-                    sent_count += 1
-            except Exception as e:
-                logger.log_error(f"Помилка відправки сповіщення {user_id}: {e}")
-        
-        logger.log_info(f"Відправлено {sent_count} сповіщень про оголошення")
-        return sent_count
-
 
 # Глобальний екземпляр
 announcement_manager = AnnouncementManager()
@@ -228,4 +265,3 @@ announcement_manager = AnnouncementManager()
 def get_announcement_manager() -> AnnouncementManager:
     """Отримання глобального менеджера оголошень"""
     return announcement_manager
-

@@ -1,5 +1,5 @@
 """
-Модуль управління базою даних для Schedule Bot
+Модуль управління базою даних для TeachHub
 Надає функції для роботи з SQLite через SQLAlchemy
 Підтримка конкурентного доступу (веб + Telegram бот)
 """
@@ -83,49 +83,75 @@ class DatabaseManager:
             Base.metadata.create_all(bind=self.engine)
             logger.log_info("Таблиці БД успішно створені")
             
-            # Виконуємо міграції після створення таблиць
-            self.migrate_add_role_column()
+            # Виконуємо міграції
+            self.migrate_add_full_name()
+            self.migrate_add_teacher_user_id()
+            self.migrate_update_announcements()
             
             return True
         except Exception as e:
             logger.log_error(f"Помилка створення таблиць БД: {e}")
             return False
     
-    def migrate_add_role_column(self):
-        """Автоматична міграція: додавання колонки role в таблицю users"""
+    def migrate_add_full_name(self):
+        """Міграція: додавання колонки full_name до таблиці users"""
         try:
-            # Перевіряємо чи існує колонка role через прямі SQL запити
-            from sqlalchemy import text
+            from sqlalchemy import text, inspect
             with self.engine.begin() as conn:
-                # Перевіряємо чи існує колонка role
-                result = conn.execute(text("""
-                    SELECT COUNT(*) FROM pragma_table_info('users') 
-                    WHERE name='role'
-                """)).scalar()
+                inspector = inspect(self.engine)
                 
-                if result == 0:
-                    # Колонка не існує - додаємо її
-                    logger.log_info("Додавання колонки 'role' в таблицю 'users'...")
-                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'"))
-                    
-                    # Встановлюємо роль 'admin' для адміністратора
-                    admin_user_id = os.getenv("ADMIN_USER_ID")
-                    if admin_user_id:
-                        try:
-                            admin_id = int(admin_user_id)
-                            conn.execute(
-                                text("UPDATE users SET role = 'admin' WHERE user_id = :user_id"),
-                                {"user_id": admin_id}
-                            )
-                            logger.log_info(f"Встановлено роль 'admin' для користувача {admin_id}")
-                        except (ValueError, TypeError):
-                            logger.log_warning(f"ADMIN_USER_ID не валідний: {admin_user_id}")
-                    
-                    logger.log_info("Міграція колонки 'role' виконана успішно")
-                else:
-                    logger.log_info("Колонка 'role' вже існує, міграція не потрібна")
+                # Перевіряємо чи існує таблиця users
+                if 'users' not in inspector.get_table_names():
+                    return
+                
+                # Перевіряємо чи існує колонка full_name
+                columns = [col['name'] for col in inspector.get_columns('users')]
+                
+                if 'full_name' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(200)"))
         except Exception as e:
-            logger.log_error(f"Помилка міграції колонки 'role': {e}")
+            logger.log_error(f"Помилка міграції додавання full_name: {e}")
+    
+    def migrate_add_teacher_user_id(self):
+        """Міграція: додавання колонки teacher_user_id до таблиць schedule_entries та academic_periods"""
+        try:
+            from sqlalchemy import text, inspect
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                # Перевіряємо schedule_entries
+                if 'schedule_entries' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('schedule_entries')]
+                    if 'teacher_user_id' not in columns:
+                        conn.execute(text("ALTER TABLE schedule_entries ADD COLUMN teacher_user_id INTEGER"))
+                
+                # Перевіряємо academic_periods
+                if 'academic_periods' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('academic_periods')]
+                    if 'teacher_user_id' not in columns:
+                        conn.execute(text("ALTER TABLE academic_periods ADD COLUMN teacher_user_id INTEGER"))
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання teacher_user_id: {e}")
+    
+    def migrate_update_announcements(self):
+        """Міграція: оновлення таблиці announcements (додати sent_at, recipient_count)"""
+        try:
+            from sqlalchemy import text, inspect
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                if 'announcements' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('announcements')]
+                    
+                    # Додаємо sent_at якщо немає
+                    if 'sent_at' not in columns:
+                        conn.execute(text("ALTER TABLE announcements ADD COLUMN sent_at DATETIME"))
+                    
+                    # Додаємо recipient_count якщо немає
+                    if 'recipient_count' not in columns:
+                        conn.execute(text("ALTER TABLE announcements ADD COLUMN recipient_count INTEGER DEFAULT 0"))
+        except Exception as e:
+            logger.log_error(f"Помилка міграції оновлення announcements: {e}")
     
     def drop_all_tables(self):
         """Видалення всіх таблиць (використовувати обережно!)"""
@@ -279,7 +305,7 @@ class DatabaseManager:
                 info['pending_requests'] = session.query(PendingRequest).count()
                 info['schedule_entries'] = session.query(ScheduleEntry).count()
                 info['academic_periods'] = session.query(AcademicPeriod).count()
-                info['announcements'] = session.query(Announcement).filter(Announcement.is_active == True).count()
+                info['announcements'] = session.query(Announcement).count()
                 info['notification_history'] = session.query(NotificationHistory).count()
                 info['logs'] = session.query(Log).count()
                 info['config_items'] = session.query(BotConfig).count()

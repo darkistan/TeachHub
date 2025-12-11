@@ -110,7 +110,7 @@ setup.bat
 Відредагуйте `config.env`:
 ```env
 TELEGRAM_BOT_TOKEN=your_bot_token  # від @BotFather
-ADMIN_USER_ID=your_telegram_id     # ваш ID
+# ADMIN_USER_ID більше не використовується - адміністрація тільки через веб-інтерфейс
 ALERTS_API_TOKEN=your_token         # з alerts.in.ua
 AIR_ALERT_CITY=Дніпро              # ваше місто
 ```
@@ -199,8 +199,8 @@ start_all.bat
 - Запустіть: `venv\Scripts\python.exe run_web.py`
 
 ### "Database is locked":
-- Запустіть: `venv\Scripts\python.exe check_db_status.py wal`
-- Це увімкне WAL mode
+- Перезапустіть бота та веб-інтерфейс
+- WAL mode автоматично увімкнено через `database.py`
 
 ### Пусті дані:
 - Імпортуйте backup через веб

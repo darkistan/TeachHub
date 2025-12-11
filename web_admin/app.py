@@ -1,10 +1,11 @@
 """
-Flask веб-інтерфейс для управління Schedule Bot
-Адмін панель для управління користувачами, розкладом, оголошеннями тощо
+Flask веб-інтерфейс для управління TeachHub
+Адмін панель для управління викладачами, розкладом, оголошеннями тощо
 """
 import os
 import sys
 from datetime import datetime, timedelta
+from typing import Dict, Any
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_wtf import CSRFProtect
 
@@ -14,8 +15,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from database import init_database, get_session
 from models import (
     User, PendingRequest, ScheduleEntry, ScheduleMetadata,
-    AcademicPeriod, Announcement, NotificationHistory,
-    NotificationSettings, Log, BotConfig
+    AcademicPeriod, Announcement, AnnouncementRecipient,
+    NotificationHistory, NotificationSettings, Log, BotConfig
 )
 from air_alert import get_air_alert_manager
 
@@ -41,7 +42,7 @@ def dashboard():
                 'users_count': session.query(User).count(),
                 'pending_requests': session.query(PendingRequest).count(),
                 'schedule_entries': session.query(ScheduleEntry).count(),
-                'announcements_count': session.query(Announcement).filter(Announcement.is_active == True).count(),
+                'announcements_count': session.query(Announcement).count(),
             }
             
             # Метадані розкладу
@@ -81,13 +82,7 @@ def add_user():
     try:
         user_id = int(request.form.get('user_id'))
         username = request.form.get('username', 'без username')
-        role = request.form.get('role', 'user')
-        
-        # Валідація ролі
-        from input_validator import input_validator
-        if not input_validator.validate_role(role):
-            flash('Невірна роль!', 'danger')
-            return redirect(url_for('users'))
+        full_name = request.form.get('full_name', '').strip()
         
         with get_session() as session:
             # Перевіряємо чи вже існує
@@ -101,41 +96,32 @@ def add_user():
                 username=username,
                 approved_at=datetime.now(),
                 notifications_enabled=False,
-                role=role
+                role='user',  # Завжди user для Telegram користувачів
+                full_name=full_name if full_name else None
             )
             session.add(user)
             session.commit()
             
-            flash(f'Користувача @{username} додано з роллю {role}!', 'success')
+            flash(f'Викладача @{username} додано!', 'success')
     except Exception as e:
         flash(f'Помилка додавання користувача: {e}', 'danger')
     
     return redirect(url_for('users'))
 
 
-@app.route('/users/change-role/<int:user_id>', methods=['POST'])
-def change_user_role(user_id):
-    """Зміна ролі користувача"""
+@app.route('/users/update-full-name/<int:user_id>', methods=['POST'])
+def update_user_full_name(user_id):
+    """Оновлення ПІБ викладача"""
     try:
-        new_role = request.form.get('role')
+        full_name = request.form.get('full_name', '').strip()
         
-        # Валідація ролі
-        from input_validator import input_validator
-        if not input_validator.validate_role(new_role):
-            flash('Невірна роль!', 'danger')
-            return redirect(url_for('users'))
-        
-        with get_session() as session:
-            user = session.query(User).filter(User.user_id == user_id).first()
-            if user:
-                old_role = getattr(user, 'role', 'user') or 'user'
-                user.role = new_role
-                session.commit()
-                flash(f'Роль користувача @{user.username} змінено з {old_role} на {new_role}', 'success')
-            else:
-                flash('Користувача не знайдено!', 'warning')
+        from auth import auth_manager
+        if auth_manager.update_user_full_name(user_id, full_name if full_name else None):
+            flash('ПІБ викладача оновлено!', 'success')
+        else:
+            flash('Користувача не знайдено!', 'warning')
     except Exception as e:
-        flash(f'Помилка зміни ролі: {e}', 'danger')
+        flash(f'Помилка оновлення ПІБ: {e}', 'danger')
     
     return redirect(url_for('users'))
 
@@ -232,7 +218,31 @@ def schedule():
     """Управління розкладом"""
     try:
         with get_session() as session:
-            entries = session.query(ScheduleEntry).order_by(ScheduleEntry.time).all()
+            # Отримуємо параметр фільтрації по викладачу
+            teacher_filter = request.args.get('teacher_id', type=int)
+            
+            # Отримуємо всіх викладачів для вибору
+            # Отримуємо всіх користувачів (не тільки з role='user', щоб включити всіх)
+            teachers = session.query(User).all()
+            existing_teacher_ids = {t.user_id for t in teachers}
+            
+            # Також додаємо викладачів, які є в розкладі (teacher_user_id), але можуть не бути в списку користувачів
+            teachers_in_schedule = session.query(ScheduleEntry.teacher_user_id).distinct().all()
+            teacher_ids_in_schedule = {t[0] for t in teachers_in_schedule if t[0] is not None}
+            
+            # Додаємо викладачів з розкладу, яких немає в списку
+            for teacher_id in teacher_ids_in_schedule:
+                if teacher_id not in existing_teacher_ids:
+                    user = session.query(User).filter(User.user_id == teacher_id).first()
+                    if user:
+                        teachers.append(user)
+            
+            # Отримуємо заняття з фільтрацією
+            # Розклад показується тільки для конкретного викладача
+            entries = []
+            if teacher_filter:
+                query = session.query(ScheduleEntry).filter(ScheduleEntry.teacher_user_id == teacher_filter)
+                entries = query.order_by(ScheduleEntry.time).all()
             metadata = session.query(ScheduleMetadata).first()
             
             # Групуємо по днях та типу тижня
@@ -249,18 +259,29 @@ def schedule():
                     'denominator': []
                 }
             
+            # Створюємо словник викладачів для швидкого доступу
+            teachers_dict = {t.user_id: t for t in teachers}
+            
             for entry in entries:
                 if entry.day_of_week in schedule_data:
+                    # Додаємо інформацію про викладача до entry
+                    if entry.teacher_user_id and entry.teacher_user_id in teachers_dict:
+                        teacher = teachers_dict[entry.teacher_user_id]
+                        entry.teacher_display = teacher.full_name if teacher.full_name else entry.teacher
+                    else:
+                        entry.teacher_display = entry.teacher
                     schedule_data[entry.day_of_week][entry.week_type].append(entry)
             
             return render_template('schedule.html',
                                  schedule=schedule_data,
                                  metadata=metadata,
                                  days_order=days_order,
-                                 day_names=day_names)
+                                 day_names=day_names,
+                                 teachers=teachers,
+                                 selected_teacher_id=teacher_filter)
     except Exception as e:
         flash(f'Помилка завантаження розкладу: {e}', 'danger')
-        return render_template('schedule.html', schedule={}, metadata=None, days_order=[], day_names={})
+        return render_template('schedule.html', schedule={}, metadata=None, days_order=[], day_names={}, teachers=[], selected_teacher_id=None)
 
 
 @app.route('/schedule/add', methods=['POST'])
@@ -268,12 +289,22 @@ def add_schedule_entry():
     """Додавання заняття"""
     try:
         with get_session() as session:
+            teacher_user_id = request.form.get('teacher_user_id', type=int)
+            
+            # Отримуємо ПІБ викладача, якщо вказано teacher_user_id
+            teacher_name = request.form.get('teacher', '')
+            if teacher_user_id:
+                user = session.query(User).filter(User.user_id == teacher_user_id).first()
+                if user and getattr(user, 'full_name', None):
+                    teacher_name = user.full_name
+            
             entry = ScheduleEntry(
                 day_of_week=request.form['day_of_week'],
                 time=request.form['time'],
                 subject=request.form['subject'],
                 lesson_type=request.form['lesson_type'],
-                teacher=request.form['teacher'],
+                teacher=teacher_name,  # Зберігаємо для сумісності
+                teacher_user_id=teacher_user_id,
                 teacher_phone=request.form.get('teacher_phone', ''),
                 classroom=request.form.get('classroom', ''),
                 conference_link=request.form.get('conference_link', ''),
@@ -297,11 +328,21 @@ def edit_schedule_entry(entry_id):
         with get_session() as session:
             entry = session.query(ScheduleEntry).filter(ScheduleEntry.id == entry_id).first()
             if entry:
+                teacher_user_id = request.form.get('teacher_user_id', type=int)
+                
+                # Отримуємо ПІБ викладача, якщо вказано teacher_user_id
+                teacher_name = request.form.get('teacher', '')
+                if teacher_user_id:
+                    user = session.query(User).filter(User.user_id == teacher_user_id).first()
+                    if user and getattr(user, 'full_name', None):
+                        teacher_name = user.full_name
+                
                 entry.day_of_week = request.form['day_of_week']
                 entry.time = request.form['time']
                 entry.subject = request.form['subject']
                 entry.lesson_type = request.form['lesson_type']
-                entry.teacher = request.form['teacher']
+                entry.teacher = teacher_name  # Зберігаємо для сумісності
+                entry.teacher_user_id = teacher_user_id
                 entry.teacher_phone = request.form.get('teacher_phone', '')
                 entry.classroom = request.form.get('classroom', '')
                 entry.conference_link = request.form.get('conference_link', '')
@@ -454,39 +495,91 @@ def update_settings():
 def announcements():
     """Управління оголошеннями"""
     try:
+        from announcement_manager import get_announcement_manager
+        announcement_manager = get_announcement_manager()
+        
+        # Отримуємо історію оголошень та список викладачів в одній сесії
         with get_session() as session:
-            all_announcements = session.query(Announcement).order_by(Announcement.created_at.desc()).all()
-            active_announcement = session.query(Announcement).filter(Announcement.is_active == True).first()
+            # Отримуємо історію оголошень
+            announcements_list = session.query(Announcement).order_by(
+                Announcement.sent_at.desc()
+            ).limit(100).all()
             
-            return render_template('announcements.html',
-                                 announcements=all_announcements,
-                                 active_announcement=active_announcement)
+            announcement_history = []
+            for ann in announcements_list:
+                announcement_history.append({
+                    'id': ann.id,
+                    'content': ann.content[:100] + '...' if len(ann.content) > 100 else ann.content,
+                    'author_username': ann.author_username,
+                    'priority': ann.priority,
+                    'sent_at': ann.sent_at if ann.sent_at else None,
+                    'recipient_count': ann.recipient_count or 0,
+                    'created_at': ann.created_at
+                })
+            
+            # Отримуємо список викладачів для вибору
+            teachers_list = session.query(User).all()
+            teachers = []
+            for teacher in teachers_list:
+                teachers.append({
+                    'user_id': teacher.user_id,
+                    'username': teacher.username or f"user_{teacher.user_id}",
+                    'full_name': getattr(teacher, 'full_name', None)
+                })
+        
+        return render_template('announcements.html',
+                             announcements=announcement_history,
+                             teachers=teachers)
     except Exception as e:
         flash(f'Помилка завантаження оголошень: {e}', 'danger')
-        return render_template('announcements.html', announcements=[], active_announcement=None)
+        return render_template('announcements.html', announcements=[], teachers=[])
 
 
 @app.route('/announcements/create', methods=['POST'])
 def create_announcement():
-    """Створення оголошення"""
+    """Створення та відправка оголошення"""
     try:
-        with get_session() as session:
-            # Деактивуємо всі попередні
-            session.query(Announcement).update({'is_active': False})
+        from announcement_manager import get_announcement_manager
+        announcement_manager = get_announcement_manager()
+        
+        content = request.form.get('content', '').strip()
+        priority = request.form.get('priority', 'normal')
+        author_id = int(request.form.get('author_id', 0))
+        author_username = request.form.get('author_username', 'admin')
+        
+        # Отримуємо список отримувачів
+        send_to_all = request.form.get('send_to_all') == 'on'
+        
+        if send_to_all:
+            # Отримуємо всіх викладачів
+            teachers = announcement_manager.get_all_teachers()
+            recipient_ids = [t['user_id'] for t in teachers]
+        else:
+            # Отримуємо вибраних викладачів
+            recipient_ids = [int(rid) for rid in request.form.getlist('recipient_ids')]
+        
+        if not recipient_ids:
+            flash('Виберіть хоча б одного отримувача!', 'warning')
+            return redirect(url_for('announcements'))
+        
+        if not content:
+            flash('Введіть текст оголошення!', 'warning')
+            return redirect(url_for('announcements'))
+        
+        # Відправляємо оголошення
+        result = announcement_manager.send_announcement_to_users(
+            recipient_user_ids=recipient_ids,
+            content=content,
+            priority=priority,
+            author_id=author_id,
+            author_username=author_username
+        )
+        
+        if result['sent'] > 0:
+            flash(f'Оголошення відправлено {result["sent"]} викладачам!', 'success')
+        if result['failed'] > 0:
+            flash(f'Помилка відправки {result["failed"]} оголошень', 'warning')
             
-            announcement = Announcement(
-                content=request.form['content'],
-                author_id=int(request.form.get('author_id', 0)),
-                author_username=request.form.get('author_username', 'admin'),
-                priority=request.form.get('priority', 'normal'),
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                is_active=True
-            )
-            session.add(announcement)
-            session.commit()
-            
-            flash('Оголошення створено!', 'success')
     except Exception as e:
         flash(f'Помилка створення оголошення: {e}', 'danger')
     
@@ -518,40 +611,67 @@ def edit_announcement(ann_id):
 def delete_announcement(ann_id):
     """Видалення оголошення"""
     try:
-        with get_session() as session:
-            announcement = session.query(Announcement).filter(Announcement.id == ann_id).first()
-            if announcement:
-                session.delete(announcement)
-                session.commit()
-                flash('Оголошення видалено!', 'success')
-            else:
-                flash('Оголошення не знайдено!', 'warning')
+        from announcement_manager import get_announcement_manager
+        announcement_manager = get_announcement_manager()
+        
+        if announcement_manager.delete_announcement(ann_id):
+            flash('Оголошення видалено!', 'success')
+        else:
+            flash('Оголошення не знайдено!', 'warning')
     except Exception as e:
         flash(f'Помилка видалення оголошення: {e}', 'danger')
     
     return redirect(url_for('announcements'))
 
 
-@app.route('/announcements/activate/<int:ann_id>', methods=['POST'])
-def activate_announcement(ann_id):
-    """Активація оголошення"""
+@app.route('/announcements/<int:ann_id>/recipients')
+def announcement_recipients(ann_id):
+    """Перегляд отримувачів оголошення"""
     try:
+        from announcement_manager import get_announcement_manager
+        announcement_manager = get_announcement_manager()
+        
+        # Отримуємо оголошення та отримувачів в одній сесії
         with get_session() as session:
-            # Деактивуємо всі
-            session.query(Announcement).update({'is_active': False})
-            
-            # Активуємо вибране
-            announcement = session.query(Announcement).filter(Announcement.id == ann_id).first()
-            if announcement:
-                announcement.is_active = True
-                session.commit()
-                flash('Оголошення активовано!', 'success')
-            else:
+            announcement_obj = session.query(Announcement).filter(Announcement.id == ann_id).first()
+            if not announcement_obj:
                 flash('Оголошення не знайдено!', 'warning')
+                return redirect(url_for('announcements'))
+            
+            # Конвертуємо оголошення в словник
+            announcement = {
+                'id': announcement_obj.id,
+                'content': announcement_obj.content,
+                'author_username': announcement_obj.author_username,
+                'priority': announcement_obj.priority,
+                'sent_at': announcement_obj.sent_at,
+                'recipient_count': announcement_obj.recipient_count or 0,
+                'created_at': announcement_obj.created_at
+            }
+            
+            # Отримуємо отримувачів
+            recipients_list = session.query(AnnouncementRecipient, User).join(
+                User, AnnouncementRecipient.recipient_user_id == User.user_id
+            ).filter(
+                AnnouncementRecipient.announcement_id == ann_id
+            ).all()
+            
+            recipients = []
+            for recipient, user in recipients_list:
+                recipients.append({
+                    'recipient_user_id': recipient.recipient_user_id,
+                    'username': user.username or f"user_{user.user_id}",
+                    'full_name': getattr(user, 'full_name', None),
+                    'sent_at': recipient.sent_at,
+                    'status': recipient.status
+                })
+        
+        return render_template('announcement_recipients.html',
+                             announcement=announcement,
+                             recipients=recipients)
     except Exception as e:
-        flash(f'Помилка активації оголошення: {e}', 'danger')
-    
-    return redirect(url_for('announcements'))
+        flash(f'Помилка завантаження отримувачів: {e}', 'danger')
+        return redirect(url_for('announcements'))
 
 
 @app.route('/academic')
@@ -637,6 +757,61 @@ def delete_academic_period(period_id):
     return redirect(url_for('academic'))
 
 
+def calculate_teacher_workload(session, teacher_user_id: int) -> Dict[str, Any]:
+    """
+    Розрахунок навантаження годин для викладача за тиждень
+    
+    Args:
+        session: SQLAlchemy session
+        teacher_user_id: ID викладача
+        
+    Returns:
+        Словник з навантаженням: total_hours, by_day, by_type, lessons_count
+    """
+    try:
+        # Отримуємо всі заняття викладача
+        entries = session.query(ScheduleEntry).filter(
+            ScheduleEntry.teacher_user_id == teacher_user_id
+        ).all()
+        
+        # Розраховуємо години
+        total_hours = 0
+        by_day = {}
+        by_type = {}
+        lessons_count = 0
+        
+        for entry in entries:
+            # Парсимо час (наприклад, "08:30-09:50")
+            try:
+                time_str = entry.time
+                if '-' in time_str:
+                    start_str, end_str = time_str.split('-')
+                    start = datetime.strptime(start_str, "%H:%M")
+                    end = datetime.strptime(end_str, "%H:%M")
+                    duration = (end - start).total_seconds() / 3600  # Години
+                    total_hours += duration
+                    lessons_count += 1
+                    
+                    # По днях
+                    day = entry.day_of_week
+                    by_day[day] = by_day.get(day, 0) + duration
+                    
+                    # По типах заняття
+                    lesson_type = entry.lesson_type
+                    by_type[lesson_type] = by_type.get(lesson_type, 0) + duration
+            except (ValueError, AttributeError):
+                continue
+        
+        return {
+            'total_hours': round(total_hours, 2),
+            'by_day': by_day,
+            'by_type': by_type,
+            'lessons_count': lessons_count
+        }
+    except Exception as e:
+        return {'total_hours': 0, 'by_day': {}, 'by_type': {}, 'lessons_count': 0}
+
+
 @app.route('/stats')
 def stats():
     """Статистика використання"""
@@ -680,6 +855,22 @@ def stats():
                     'count': count
                 })
             
+            # Навантаження викладачів
+            teachers = session.query(User).filter(User.role == 'user').all()
+            teacher_workload = []
+            for teacher in teachers:
+                workload = calculate_teacher_workload(session, teacher.user_id)
+                teacher_workload.append({
+                    'user_id': teacher.user_id,
+                    'username': teacher.username,
+                    'full_name': teacher.full_name,
+                    'total_hours': workload['total_hours'],
+                    'lessons_count': workload['lessons_count']
+                })
+            
+            # Сортуємо по навантаженню
+            teacher_workload.sort(key=lambda x: x['total_hours'], reverse=True)
+            
             # Загальна статистика
             total_logs = session.query(Log).count()
             total_errors = session.query(Log).filter(Log.level == 'ERROR').count()
@@ -698,10 +889,11 @@ def stats():
                                  command_stats=command_stats,
                                  daily_activity=daily_activity,
                                  user_activity=user_activity,
-                                 general_stats=general_stats)
+                                 general_stats=general_stats,
+                                 teacher_workload=teacher_workload)
     except Exception as e:
         flash(f'Помилка завантаження статистики: {e}', 'danger')
-        return render_template('stats.html', command_stats=[], daily_activity=[], user_activity=[], general_stats={})
+        return render_template('stats.html', command_stats=[], daily_activity=[], user_activity=[], general_stats={}, teacher_workload=[])
 
 
 @app.route('/api/alert-status')

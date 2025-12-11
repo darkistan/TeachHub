@@ -2,7 +2,7 @@
 chcp 65001 > nul
 cls
 echo =============================================================
-echo    STARTING FULL SYSTEM - Schedule Bot v2.0
+echo    STARTING FULL SYSTEM - TeachHub v2.0
 echo =============================================================
 echo.
 echo Starting:
@@ -13,11 +13,11 @@ echo Two windows will open - DO NOT CLOSE THEM!
 echo.
 pause
 
-start "Schedule Bot - Telegram" cmd /k "start_bot.bat"
+start "TeachHub - Telegram Bot" cmd /k "start_bot.bat"
 
 timeout /t 3 /nobreak > nul
 
-start "Schedule Bot - Web Admin" cmd /k "start_web.bat"
+start "TeachHub - Web Admin" cmd /k "start_web.bat"
 
 cls
 echo.

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Отримувачі оголошення - TeachHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-people"></i> Отримувачі оголошення #{{announcement['id']}}</h1>
+        <p class="text-muted">Список викладачів, яким було відправлено це оголошення</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{url_for('announcements')}}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Назад до оголошень
+        </a>
+    </div>
+</div>
+
+<!-- Інформація про оголошення -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-info-circle"></i> Інформація про оголошення</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Пріоритет:</strong> 
+                            <span class="badge bg-{{
+                                'danger' if announcement['priority'] == 'urgent' 
+                                else ('warning' if announcement['priority'] == 'important' else 'secondary')
+                            }}">{{announcement['priority']}}</span>
+                        </p>
+                        <p><strong>Автор:</strong> @{{announcement['author_username']}}</p>
+                        <p><strong>Час відправки:</strong> 
+                            {% if announcement['sent_at'] %}
+                                {% if announcement['sent_at'] is string %}
+                                    {{announcement['sent_at']}}
+                                {% else %}
+                                    {{announcement['sent_at'].strftime('%d.%m.%Y %H:%M')}}
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Отримувачів:</strong> {{announcement['recipient_count']}}</p>
+                        <p><strong>Створено:</strong> {{announcement['created_at'].strftime('%d.%m.%Y %H:%M')}}</p>
+                    </div>
+                </div>
+                <hr>
+                <div>
+                    <strong>Зміст:</strong>
+                    <div style="white-space: pre-wrap; background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 10px;">
+                        {{announcement['content']}}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Список отримувачів -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-list"></i> Список отримувачів ({{recipients|length}})</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Username</th>
+                                <th>ПІБ</th>
+                                <th>Час відправки</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for recipient in recipients %}
+                            <tr>
+                                <td>{{recipient['recipient_user_id']}}</td>
+                                <td>@{{recipient['username']}}</td>
+                                <td>{{recipient.get('full_name') or '-'}}</td>
+                                <td>
+                                    {% if recipient['sent_at'] %}
+                                        {% if recipient['sent_at'] is string %}
+                                            {{recipient['sent_at']}}
+                                        {% else %}
+                                            {{recipient['sent_at'].strftime('%d.%m.%Y %H:%M')}}
+                                        {% endif %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if recipient['status'] == 'sent' %}
+                                        <span class="badge bg-success">Відправлено</span>
+                                    {% elif recipient['status'] == 'blocked' %}
+                                        <span class="badge bg-warning">Заблоковано</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Помилка</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center">Отримувачів немає</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

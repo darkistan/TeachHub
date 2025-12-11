@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 
 from database import get_session
-from models import ScheduleEntry, ScheduleMetadata
+from models import ScheduleEntry, ScheduleMetadata, User
 from logger import logger
 
 
@@ -83,31 +83,53 @@ class ScheduleHandler:
             logger.log_error(f"Помилка встановлення типу тижня: {e}")
             return False
     
-    def get_day_schedule(self, day: str, week_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Отримання розкладу на день"""
+    def get_day_schedule(self, day: str, week_type: Optional[str] = None, teacher_user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Отримання розкладу на день
+        
+        Args:
+            day: День тижня (monday, tuesday, etc.)
+            week_type: Тип тижня (numerator/denominator)
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+        """
         if week_type is None:
             week_type = self.get_current_week_type()
         
         try:
             with get_session() as session:
-                entries = session.query(ScheduleEntry).filter(
+                query = session.query(ScheduleEntry).filter(
                     ScheduleEntry.day_of_week == day,
                     ScheduleEntry.week_type == week_type
-                ).all()
+                )
                 
-                return [
-                    {
+                # Фільтруємо по викладачу, якщо вказано
+                if teacher_user_id is not None:
+                    query = query.filter(ScheduleEntry.teacher_user_id == teacher_user_id)
+                
+                entries = query.all()
+                
+                result = []
+                for entry in entries:
+                    # Отримуємо ПІБ викладача з User, якщо є teacher_user_id
+                    teacher_name = entry.teacher
+                    if entry.teacher_user_id:
+                        user = session.query(User).filter(User.user_id == entry.teacher_user_id).first()
+                        if user and getattr(user, 'full_name', None):
+                            teacher_name = user.full_name
+                    
+                    result.append({
                         'time': entry.time,
                         'subject': entry.subject,
                         'type': entry.lesson_type,
-                        'teacher': entry.teacher,
+                        'teacher': teacher_name,
+                        'teacher_user_id': entry.teacher_user_id,
                         'teacher_phone': entry.teacher_phone,
                         'classroom': entry.classroom,
                         'conference_link': entry.conference_link,
                         'exam_type': entry.exam_type
-                    }
-                    for entry in entries
-                ]
+                    })
+                
+                return result
         except Exception as e:
             logger.log_error(f"Помилка отримання розкладу для {day}, {week_type}: {e}")
             return []
@@ -120,13 +142,18 @@ class ScheduleHandler:
         }
         return days[datetime.now().weekday()]
     
-    def get_current_lesson_info(self) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """Отримання інформації про поточне та наступне заняття"""
+    def get_current_lesson_info(self, teacher_user_id: Optional[int] = None) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """
+        Отримання інформації про поточне та наступне заняття
+        
+        Args:
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+        """
         current_time = datetime.now().time()
         current_day = self.get_current_day_name()
         current_week = self.get_current_week_type()
         
-        today_lessons = self.get_day_schedule(current_day, current_week)
+        today_lessons = self.get_day_schedule(current_day, current_week, teacher_user_id)
         
         if not today_lessons:
             return None, None
@@ -207,8 +234,14 @@ class ScheduleHandler:
         
         return "\n".join(message_parts)
     
-    def get_week_schedule(self, week_type: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Отримання розкладу на тиждень"""
+    def get_week_schedule(self, week_type: Optional[str] = None, teacher_user_id: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Отримання розкладу на тиждень
+        
+        Args:
+            week_type: Тип тижня (numerator/denominator)
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+        """
         if week_type is None:
             week_type = self.get_current_week_type()
         
@@ -216,7 +249,7 @@ class ScheduleHandler:
         result = {}
         
         for day in days:
-            result[day] = self.get_day_schedule(day, week_type)
+            result[day] = self.get_day_schedule(day, week_type, teacher_user_id)
         
         return result
     

@@ -4,3 +4,4 @@ sqlalchemy>=2.0.35
 flask==3.0.0
 flask-wtf==1.2.1
 alembic==1.13.0
+requests==2.31.0

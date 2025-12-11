@@ -28,9 +28,9 @@ class NotificationManager:
                 if user:
                     user.notifications_enabled = enabled
                     session.commit()
-                    logger.log_info(f"Оповіщення для користувача {user_id} {'увімкнені' if enabled else 'вимкнені'}")
-                    return True
-                return False
+                logger.log_info(f"Оповіщення для користувача {user_id} {'увімкнені' if enabled else 'вимкнені'}")
+                return True
+            return False
         except Exception as e:
             logger.log_error(f"Помилка встановлення оповіщень: {e}")
             return False
@@ -55,8 +55,13 @@ class NotificationManager:
             logger.log_error(f"Помилка отримання користувачів з оповіщеннями: {e}")
             return []
     
-    def get_next_lesson_info(self) -> Optional[Dict[str, Any]]:
-        """Отримання інформації про наступне заняття"""
+    def get_next_lesson_info(self, teacher_user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Отримання інформації про наступне заняття для конкретного викладача
+        
+        Args:
+            teacher_user_id: ID викладача
+        """
         try:
             schedule = get_schedule_handler()
             if not schedule or not schedule.is_connected():
@@ -64,7 +69,8 @@ class NotificationManager:
             
             current_day = schedule.get_current_day_name()
             current_week = schedule.get_current_week_type()
-            day_schedule = schedule.get_day_schedule(current_day, current_week)
+            # Отримуємо розклад тільки для цього викладача
+            day_schedule = schedule.get_day_schedule(current_day, current_week, teacher_user_id=teacher_user_id)
             
             if not day_schedule:
                 return None
@@ -85,14 +91,15 @@ class NotificationManager:
                             "time_until_start": time_until_start,
                             "lesson_datetime": lesson_datetime,
                             "day_name": current_day,
-                            "week_type": current_week
+                            "week_type": current_week,
+                            "teacher_user_id": teacher_user_id
                         }
                 except ValueError:
                     continue
             
             return None
         except Exception as e:
-            logger.log_error(f"Помилка отримання наступного заняття: {e}")
+            logger.log_error(f"Помилка отримання наступного заняття для викладача {teacher_user_id}: {e}")
             return None
     
     async def create_notification_message(self, lesson_info: Dict[str, Any]) -> str:
@@ -150,59 +157,73 @@ class NotificationManager:
             return "🔔 Нагадування про заняття"
     
     async def check_and_send_notifications(self, bot) -> None:
-        """Перевірка та відправка оповіщень"""
+        """Перевірка та відправка оповіщень для всіх викладачів"""
         try:
-            lesson_info = self.get_next_lesson_info()
-            if not lesson_info:
+            users = self.get_users_with_notifications()
+            if not users:
                 return
             
-            time_until_start = lesson_info["time_until_start"]
-            minutes_until_start = int(time_until_start.total_seconds() / 60)
-            lesson = lesson_info["lesson"]
-            
             today = datetime.now().date().isoformat()
-            lesson_key = f"{today}_{lesson.get('subject')}_{lesson.get('time')}_{lesson_info['day_name']}_{lesson_info['week_type']}"
+            total_sent = 0
             
-            if 10 <= minutes_until_start <= 11:
-                # Перевіряємо чи вже відправляли
-                with get_session() as session:
-                    existing = session.query(NotificationHistory).filter(
-                        NotificationHistory.lesson_key == lesson_key,
-                        NotificationHistory.notification_date == today
-                    ).first()
+            # Перевіряємо заняття для кожного викладача окремо
+            for user in users:
+                try:
+                    user_id = user.get("user_id")
+                    if not user_id:
+                        continue
                     
-                    if existing:
-                        return
+                    # Отримуємо наступне заняття для цього викладача
+                    lesson_info = self.get_next_lesson_info(teacher_user_id=user_id)
+                    if not lesson_info:
+                        continue
+                    
+                    time_until_start = lesson_info["time_until_start"]
+                    minutes_until_start = int(time_until_start.total_seconds() / 60)
+                    lesson = lesson_info["lesson"]
+                    
+                    # Перевіряємо чи потрібно відправляти (за 10 хвилин)
+                    if not (10 <= minutes_until_start <= 11):
+                        continue
+                    
+                    lesson_key = f"{today}_{lesson.get('subject')}_{lesson.get('time')}_{lesson_info['day_name']}_{lesson_info['week_type']}_{user_id}"
+                    
+                    # Перевіряємо чи вже відправляли
+                    with get_session() as session:
+                        existing = session.query(NotificationHistory).filter(
+                            NotificationHistory.lesson_key == lesson_key,
+                            NotificationHistory.notification_date == today,
+                            NotificationHistory.user_id == user_id
+                        ).first()
+                        
+                        if existing:
+                            continue
+                    
+                    # Створюємо повідомлення для цього викладача
+                    message_text = await self.create_notification_message(lesson_info)
                 
-                users = self.get_users_with_notifications()
-                if not users:
-                    return
-                
-                message_text = await self.create_notification_message(lesson_info)
-                
-                sent_count = 0
-                for user in users:
-                    try:
-                        user_id = user.get("user_id")
-                        if user_id:
-                            await bot.send_message(chat_id=user_id, text=message_text, parse_mode='HTML')
-                            
-                            # Зберігаємо в історію
-                            with get_session() as session:
-                                history = NotificationHistory(
-                                    user_id=user_id,
-                                    lesson_key=lesson_key,
-                                    sent_at=datetime.now(),
-                                    notification_date=today
-                                )
-                                session.add(history)
-                                session.commit()
-                            
-                            sent_count += 1
-                    except Exception as e:
-                        logger.log_error(f"Помилка відправки оповіщення {user_id}: {e}")
-                
-                logger.log_info(f"✅ Відправлено {sent_count} оповіщень про '{lesson.get('subject')}'")
+                    # Відправляємо оповіщення
+                    await bot.send_message(chat_id=user_id, text=message_text, parse_mode='HTML')
+                    
+                    # Зберігаємо в історію
+                    with get_session() as session:
+                        history = NotificationHistory(
+                            user_id=user_id,
+                            lesson_key=lesson_key,
+                            sent_at=datetime.now(),
+                            notification_date=today
+                        )
+                        session.add(history)
+                        session.commit()
+                    
+                    total_sent += 1
+                    logger.log_info(f"✅ Відправлено оповіщення викладачу {user_id} про '{lesson.get('subject')}'")
+                    
+                except Exception as e:
+                    logger.log_error(f"Помилка відправки оповіщення викладачу {user.get('user_id')}: {e}")
+            
+            if total_sent > 0:
+                logger.log_info(f"✅ Всього відправлено {total_sent} оповіщень")
         except Exception as e:
             logger.log_error(f"Помилка перевірки оповіщень: {e}")
     

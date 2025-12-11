@@ -6,6 +6,7 @@ from typing import Dict, Tuple, Optional
 
 from database import get_session
 from models import AcademicPeriod, ScheduleMetadata
+from logger import logger
 
 
 class ScheduleAnalyzer:
@@ -15,12 +16,22 @@ class ScheduleAnalyzer:
         """Ініціалізація аналізатора"""
         pass
     
-    def _load_data_from_db(self) -> Dict:
-        """Завантаження даних з БД як словники (не ORM об'єкти)"""
+    def _load_data_from_db(self, teacher_user_id: Optional[int] = None) -> Dict:
+        """
+        Завантаження даних з БД як словники (не ORM об'єкти)
+        
+        Args:
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+        """
         try:
             with get_session() as session:
                 metadata_obj = session.query(ScheduleMetadata).first()
-                periods = session.query(AcademicPeriod).all()
+                
+                # Фільтруємо періоди по викладачу, якщо вказано
+                query = session.query(AcademicPeriod)
+                if teacher_user_id is not None:
+                    query = query.filter(AcademicPeriod.teacher_user_id == teacher_user_id)
+                periods = query.all()
                 
                 # Конвертуємо ORM об'єкти в словники
                 metadata_dict = None
@@ -48,14 +59,21 @@ class ScheduleAnalyzer:
                     'periods': periods_dict
                 }
         except Exception as e:
+            logger.log_error(f"Помилка завантаження даних з БД для teacher_user_id={teacher_user_id}: {e}")
             return {'metadata': None, 'periods': {}}
     
-    def get_current_period(self, current_date: Optional[date] = None) -> Tuple[str, Dict]:
-        """Визначає поточний період навчання"""
+    def get_current_period(self, teacher_user_id: Optional[int] = None, current_date: Optional[date] = None) -> Tuple[str, Dict]:
+        """
+        Визначає поточний період навчання
+        
+        Args:
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+            current_date: Поточна дата (опціонально)
+        """
         if current_date is None:
             current_date = date.today()
         
-        data = self._load_data_from_db()
+        data = self._load_data_from_db(teacher_user_id)
         periods = data['periods']
         
         for period_id, period_data in periods.items():
@@ -64,12 +82,18 @@ class ScheduleAnalyzer:
         
         return "unknown", {"name": "Невідомий період", "color": "❓"}
     
-    def calculate_progress(self, current_date: Optional[date] = None) -> Dict:
-        """Розраховує прогрес навчального року"""
+    def calculate_progress(self, teacher_user_id: Optional[int] = None, current_date: Optional[date] = None) -> Dict:
+        """
+        Розраховує прогрес навчального року
+        
+        Args:
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+            current_date: Поточна дата (опціонально)
+        """
         if current_date is None:
             current_date = date.today()
         
-        data = self._load_data_from_db()
+        data = self._load_data_from_db(teacher_user_id)
         periods = data['periods']
         metadata = data['metadata']
         
@@ -94,7 +118,7 @@ class ScheduleAnalyzer:
                 "weeks": period_data["weeks"],
                 "start_date": period_data["start"],
                 "end_date": period_data["end"]
-            }
+        }
         
         return progress
     
@@ -103,22 +127,28 @@ class ScheduleAnalyzer:
         filled = int((progress / 100) * length)
         return f"[{'█' * filled}{'░' * (length - filled)}] {progress:.1f}%"
     
-    def format_progress_report(self, current_date: Optional[date] = None) -> str:
-        """Форматує звіт про прогрес"""
+    def format_progress_report(self, teacher_user_id: Optional[int] = None, current_date: Optional[date] = None) -> str:
+        """
+        Форматує звіт про прогрес
+        
+        Args:
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+            current_date: Поточна дата (опціонально)
+        """
         if current_date is None:
             current_date = date.today()
         
-        progress = self.calculate_progress(current_date)
-        current_period, current_period_data = self.get_current_period(current_date)
+        progress = self.calculate_progress(teacher_user_id, current_date)
+        current_period, current_period_data = self.get_current_period(teacher_user_id, current_date)
         
-        data = self._load_data_from_db()
+        data = self._load_data_from_db(teacher_user_id)
         metadata = data['metadata']
         
         # metadata тепер словник, а не ORM об'єкт
         group_name = metadata['group_name'] if metadata else "KCM-24-11"
         
         report_parts = [
-            f"📊 **Прогрес навчання групи {group_name}**",
+            f"📊 **Прогрес навчання**",
             f"📅 Дата: {current_date.strftime('%d.%m.%Y')}",
             f"🎯 Поточний період: {current_period_data['name']}",
             "─" * 50

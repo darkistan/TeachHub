@@ -1,5 +1,5 @@
 """
-SQLAlchemy моделі для Schedule Bot
+SQLAlchemy моделі для TeachHub
 Містить всі таблиці БД для зберігання даних бота
 """
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
@@ -19,10 +19,11 @@ class User(Base):
     username = Column(String(100))
     approved_at = Column(DateTime, default=datetime.now)
     notifications_enabled = Column(Boolean, default=False)
-    role = Column(String(20), default='user')  # admin, user, control
+    role = Column(String(20), default='user')  # admin, user
+    full_name = Column(String(200))  # ПІБ викладача (призначається адміном)
     
     def __repr__(self):
-        return f"<User(user_id={self.user_id}, username='{self.username}', role='{self.role}')>"
+        return f"<User(user_id={self.user_id}, username='{self.username}', role='{self.role}', full_name='{self.full_name}')>"
 
 
 class PendingRequest(Base):
@@ -47,7 +48,8 @@ class ScheduleEntry(Base):
     time = Column(String(20), nullable=False)  # 09:00-10:30
     subject = Column(String(200), nullable=False)
     lesson_type = Column(String(50), nullable=False)  # лекція, практика, лабораторна
-    teacher = Column(String(200), nullable=False)
+    teacher = Column(String(200))  # Залишаємо для сумісності, але використовуємо teacher_user_id
+    teacher_user_id = Column(Integer, ForeignKey('users.user_id'), nullable=True, index=True)  # ID викладача
     teacher_phone = Column(String(50))
     classroom = Column(String(50))
     conference_link = Column(String(500))
@@ -55,7 +57,7 @@ class ScheduleEntry(Base):
     week_type = Column(String(20), nullable=False, index=True)  # numerator, denominator
     
     def __repr__(self):
-        return f"<ScheduleEntry(day={self.day_of_week}, subject='{self.subject}', week={self.week_type})>"
+        return f"<ScheduleEntry(day={self.day_of_week}, subject='{self.subject}', week={self.week_type}, teacher_user_id={self.teacher_user_id})>"
 
 
 class ScheduleMetadata(Base):
@@ -85,9 +87,10 @@ class AcademicPeriod(Base):
     weeks = Column(Integer, nullable=False)
     color = Column(String(10), default='🟦')  # emoji для візуалізації
     description = Column(Text)
+    teacher_user_id = Column(Integer, ForeignKey('users.user_id'), nullable=True, index=True)  # ID викладача
     
     def __repr__(self):
-        return f"<AcademicPeriod(name='{self.name}', start='{self.start_date}')>"
+        return f"<AcademicPeriod(name='{self.name}', start='{self.start_date}', teacher_user_id={self.teacher_user_id})>"
 
 
 class Announcement(Base):
@@ -101,10 +104,25 @@ class Announcement(Base):
     priority = Column(String(20), default='normal')  # normal, important, urgent
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-    is_active = Column(Boolean, default=True)
+    sent_at = Column(DateTime)  # Час відправки оголошення
+    recipient_count = Column(Integer, default=0)  # Кількість отримувачів
     
     def __repr__(self):
-        return f"<Announcement(id={self.id}, priority='{self.priority}', active={self.is_active})>"
+        return f"<Announcement(id={self.id}, priority='{self.priority}', sent_at='{self.sent_at}', recipients={self.recipient_count})>"
+
+
+class AnnouncementRecipient(Base):
+    """Модель отримувача оголошення (історія відправки)"""
+    __tablename__ = 'announcement_recipients'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    announcement_id = Column(Integer, ForeignKey('announcements.id'), nullable=False, index=True)
+    recipient_user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, index=True)
+    sent_at = Column(DateTime, default=datetime.now, index=True)
+    status = Column(String(20), default='sent')  # sent, failed, blocked
+    
+    def __repr__(self):
+        return f"<AnnouncementRecipient(announcement_id={self.announcement_id}, recipient_user_id={self.recipient_user_id}, status='{self.status}')>"
 
 
 class NotificationHistory(Base):

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Статистика - Schedule Bot Admin{% endblock %}
+{% block title %}Статистика - TeachHub Admin{% endblock %}
 
 {% block content %}
 <h1 class="mb-4"><i class="bi bi-bar-chart"></i> Статистика використання</h1>
@@ -119,6 +119,54 @@
                             </tr>
                             {% else %}
                             <tr><td colspan="5" class="text-center">Даних немає</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Навантаження викладачів -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-clock-history"></i> Навантаження викладачів (годин на тиждень)</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Викладач</th>
+                                <th>ПІБ</th>
+                                <th>Кількість занять</th>
+                                <th>Годин на тиждень</th>
+                                <th>Графік</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for teacher in teacher_workload %}
+                            <tr>
+                                <td>{{loop.index}}</td>
+                                <td>@{{teacher.username}}</td>
+                                <td>{{teacher.full_name or '-'}}</td>
+                                <td><span class="badge bg-info">{{teacher.lessons_count}}</span></td>
+                                <td><strong>{{teacher.total_hours}}</strong> год.</td>
+                                <td>
+                                    {% set max_hours = teacher_workload[0].total_hours if teacher_workload else 1 %}
+                                    <div class="progress" style="height: 20px; min-width: 150px;">
+                                        <div class="progress-bar bg-primary" style="width: {{(teacher.total_hours / max_hours * 100) if max_hours > 0 else 0}}%">
+                                            {{(teacher.total_hours / max_hours * 100) if max_hours > 0 else 0|round(1)}}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center">Даних немає</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>

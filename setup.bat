@@ -44,7 +44,7 @@ if not exist "config.env" (
     echo.
     echo IMPORTANT: Edit config.env and add:
     echo    - TELEGRAM_BOT_TOKEN from @BotFather
-    echo    - ADMIN_USER_ID your Telegram ID
+    echo    - ADMIN_USER_ID більше не потрібен (адміністрація через веб-інтерфейс)
     echo    - ALERTS_API_TOKEN from alerts.in.ua
     echo.
     notepad config.env
@@ -58,7 +58,6 @@ if not exist "schedule_bot.db" (
 echo.
 
 echo Checking database...
-venv\Scripts\python.exe check_db_status.py check
 echo.
 
 echo =============================================================
