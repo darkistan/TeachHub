@@ -85,8 +85,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Показуємо меню для авторизованого користувача
         keyboard = create_menu_keyboard(user_id)
         
+        # Отримуємо ПІБ викладача
+        full_name = auth_manager.get_user_full_name(user_id)
+        teacher_display = full_name if full_name else (update.effective_user.username or "Викладач")
+        
         # Всі користувачі Telegram - викладачі
-        message_text = alert_header + "✅ Ви маєте доступ до розкладу занять"
+        # Відображаємо ПІБ користувача при старті
+        if full_name:
+            message_text = alert_header + (
+                f"✅ <b>Вітаємо!</b>\n\n"
+                f"👤 <b>Ваше ПІБ:</b> {full_name}\n\n"
+                f"Ви маєте доступ до розкладу занять"
+            )
+        else:
+            message_text = alert_header + (
+                f"✅ <b>Вітаємо, {teacher_display}!</b>\n\n"
+                f"Ви маєте доступ до розкладу занять\n\n"
+                f"<i>ПІБ не встановлено. Зверніться до адміністратора для призначення ПІБ через веб-інтерфейс.</i>"
+            )
         
         await update.message.reply_text(message_text, reply_markup=keyboard, parse_mode='HTML')
     else:
@@ -168,8 +184,24 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     if auth_manager.is_user_allowed(user_id):
         # Авторизований користувач (викладач)
+        # Отримуємо ПІБ викладача
+        full_name = auth_manager.get_user_full_name(user_id)
+        teacher_display = full_name if full_name else (update.effective_user.username or "Викладач")
+        
         # Адміністрація тільки через веб-інтерфейс
-        message_text = alert_header + "✅ Ви маєте доступ до розкладу занять"
+        # Відображаємо ПІБ користувача в меню
+        if full_name:
+            message_text = alert_header + (
+                f"✅ <b>Вітаємо!</b>\n\n"
+                f"👤 <b>Ваше ПІБ:</b> {full_name}\n\n"
+                f"Ви маєте доступ до розкладу занять"
+            )
+        else:
+            message_text = alert_header + (
+                f"✅ <b>Вітаємо, {teacher_display}!</b>\n\n"
+                f"Ви маєте доступ до розкладу занять\n\n"
+                f"<i>ПІБ не встановлено. Зверніться до адміністратора для призначення ПІБ через веб-інтерфейс.</i>"
+            )
     else:
         # Неавторизований користувач - можливість запросити доступ
         message_text = alert_header + (
@@ -214,7 +246,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 📆 <b>Розклад на тиждень:</b>
 • Натисніть "Тиждень" щоб побачити весь розклад
-• Можна переключатися між чисельником та знаменником
 • Кожне заняття має посилання на Google Meet
 
 📊 <b>Прогрес навчання:</b>
@@ -492,7 +523,6 @@ def create_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
         keyboard.extend([
             [InlineKeyboardButton("📅 Сьогодні", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_today"))],
             [InlineKeyboardButton("📆 Тиждень", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_week"))],
-            [InlineKeyboardButton("🔄 Перемкнути тиждень", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_switch_week"))],
             [InlineKeyboardButton("📊 Прогрес навчання", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_progress"))],
             [InlineKeyboardButton(notification_button_text, callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_toggle_notifications"))],
             [InlineKeyboardButton("ℹ️ Допомога", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_help"))]
@@ -508,7 +538,6 @@ def create_schedule_keyboard(user_id: int, day: str, week_type: str) -> InlineKe
     """Створення клавіатури для розкладу на день"""
     keyboard = [
         [InlineKeyboardButton("📆 Тиждень", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_week"))],
-        [InlineKeyboardButton("🔄 Перемкнути тиждень", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_switch_week"))],
         [InlineKeyboardButton("🔙 Назад в меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_menu"))]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -536,7 +565,6 @@ def create_alternate_schedule_keyboard(user_id: int, day: str, week_type: str) -
 def create_week_keyboard(user_id: int, week_type: str) -> InlineKeyboardMarkup:
     """Створення клавіатури для розкладу на тиждень"""
     keyboard = [
-        [InlineKeyboardButton("🔄 Перемкнути тиждень", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_switch_week"))],
         [InlineKeyboardButton("📅 Сьогодні", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_today"))],
         [InlineKeyboardButton("🔙 Назад в меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_menu"))]
     ]
@@ -598,20 +626,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         # Показуємо розклад на тиждень
         await show_week_schedule(update, context, user_id)
         
-    elif command == "switch_week":
-        if not auth_manager.is_user_allowed(user_id):
-            logger.log_unauthorized_access_attempt(user_id, "menu callback switch_week")
-            await query.edit_message_text("❌ У вас немає доступу до розкладу.")
-            return
-        
-        # Показуємо розклад іншого типу тижня (без зміни поточного стану)
-        schedule = get_schedule_handler()
-        current_week = schedule.get_current_week_type()
-        alternate_week = "denominator" if current_week == "numerator" else "numerator"
-        
-        # Показуємо розклад на поточний день для альтернативного типу тижня
-        await show_current_day_schedule_alternate(update, context, user_id, alternate_week)
-        
     elif command == "help":
         if not auth_manager.is_user_allowed(user_id):
             logger.log_unauthorized_access_attempt(user_id, "menu callback help")
@@ -640,7 +654,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 📆 <b>Розклад на тиждень:</b>
 • Натисніть "Тиждень" щоб побачити весь розклад
-• Можна переключатися між чисельником та знаменником
 • Кожне заняття має посилання на Google Meet
 
 📊 <b>Прогрес навчання:</b>
@@ -702,9 +715,17 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 InlineKeyboardButton("🔙 Назад в меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_menu"))
             ]])
             
+            # Отримуємо ПІБ викладача для відображення
+            full_name = auth_manager.get_user_full_name(user_id)
+            teacher_display = full_name if full_name else (update.effective_user.username or "Викладач")
+            
+            message = f"{emoji} <b>Оповіщення {status_text}</b>\n\n"
+            if full_name:
+                message += f"👤 <b>Ваше ПІБ:</b> {full_name}\n\n"
+            message += f"Ви {'отримуватимете' if new_status else 'не отримуватимете'} нагадування про заняття за 10 хвилин до початку."
+            
             await query.edit_message_text(
-                f"{emoji} <b>Оповіщення {status_text}</b>\n\n"
-                f"Ви {'отримуватимете' if new_status else 'не отримуватимете'} нагадування про заняття за 10 хвилин до початку.",
+                message,
                 reply_markup=back_keyboard,
                 parse_mode='HTML'
             )
@@ -748,9 +769,9 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.edit_message_text("❌ У вас немає доступу до розкладу.")
             return
         
-        # Показуємо повний графік навчання
+        # Показуємо повний графік навчання для цього викладача
         analyzer = ScheduleAnalyzer()
-        message_text = analyzer.format_full_schedule()
+        message_text = analyzer.format_full_schedule(teacher_user_id=user_id)
         
         # Перевіряємо довжину повідомлення
         if len(message_text) > 4000:
@@ -842,12 +863,28 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         # Повернення в головне меню
         keyboard = create_menu_keyboard(user_id)
         
+        # Отримуємо ПІБ викладача для відображення
+        full_name = auth_manager.get_user_full_name(user_id)
+        teacher_display = full_name if full_name else (update.effective_user.username or "Викладач")
+        
         # Додаємо індикацію повітряної тривоги та типу неділі
         alert_header = await get_air_alert_header()
         
         if auth_manager.is_user_allowed(user_id):
             # Авторизований користувач (викладач)
-            message_text = alert_header + "✅ Ви маєте доступ до розкладу занять"
+            # ПІБ вже отримано вище
+            if full_name:
+                message_text = alert_header + (
+                    f"✅ <b>Вітаємо!</b>\n\n"
+                    f"👤 <b>Ваше ПІБ:</b> {full_name}\n\n"
+                    f"Ви маєте доступ до розкладу занять"
+                )
+            else:
+                message_text = alert_header + (
+                    f"✅ <b>Вітаємо, {teacher_display}!</b>\n\n"
+                    f"Ви маєте доступ до розкладу занять\n\n"
+                    f"<i>ПІБ не встановлено. Зверніться до адміністратора для призначення ПІБ через веб-інтерфейс.</i>"
+                )
         else:
             # Неавторизований користувач - можливість запросити доступ
             message_text = alert_header + (

@@ -4,13 +4,29 @@
 <h1><i class="bi bi-gear"></i> Налаштування системи</h1>
 <form method="POST" action="{{url_for('update_settings')}}">
 <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
-<div class="mb-3"><label>Група</label><input type="text" class="form-control" name="group_name" value="{{metadata.group_name if metadata}}"></div>
+<div class="mb-3"><label>Назва навчального закладу</label><input type="text" class="form-control" name="group_name" value="{{metadata.group_name if metadata}}"></div>
 <div class="mb-3"><label>Навчальний рік</label><input type="text" class="form-control" name="academic_year" value="{{metadata.academic_year if metadata}}"></div>
-<div class="mb-3"><label>Тип тижня</label>
-<select class="form-select" name="current_week">
-<option value="numerator" {{'selected' if metadata and metadata.current_week=='numerator'}}>Чисельник</option>
-<option value="denominator" {{'selected' if metadata and metadata.current_week=='denominator'}}>Знаменник</option>
-</select></div>
+<div class="mb-3">
+    <label>Тип тижня</label>
+    <select class="form-select" name="current_week">
+        <option value="numerator" {{'selected' if metadata and metadata.current_week=='numerator'}}>Чисельник</option>
+        <option value="denominator" {{'selected' if metadata and metadata.current_week=='denominator'}}>Знаменник</option>
+    </select>
+    <small class="text-muted">
+        <i class="bi bi-info-circle"></i> <strong>Встановлене значення вважається відліковим.</strong> Система автоматично перемикатиметься між чисельником та знаменником кожну неділю на основі дати початку відліку.
+        {% if metadata and metadata.numerator_start_date %}
+        <br>📅 <strong>Дата початку відліку:</strong> {{metadata.numerator_start_date}} ({{'Чисельник' if metadata.current_week == 'numerator' else 'Знаменник'}})
+        {% if current_week_type %}
+        <br>🔄 <strong>Поточний тип тижня (автоматично):</strong> <span class="badge bg-{{'primary' if current_week_type == 'numerator' else 'warning'}}">{{'Чисельник' if current_week_type == 'numerator' else 'Знаменник'}}</span>
+        {% endif %}
+        {% if next_switch_date %}
+        <br>📆 <strong>Наступне перемикання:</strong> {{next_switch_date.strftime('%d.%m.%Y')}} (неділя)
+        {% endif %}
+        {% else %}
+        <br><span class="text-warning">⚠️ Дата початку відліку буде встановлена автоматично при збереженні.</span>
+        {% endif %}
+    </small>
+</div>
 <button type="submit" class="btn btn-primary">Зберегти</button>
 </form>
 {% endblock %}

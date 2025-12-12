@@ -4,10 +4,12 @@ Flask веб-інтерфейс для управління TeachHub
 """
 import os
 import sys
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_wtf import CSRFProtect
+from dotenv import load_dotenv
 
 # Додаємо батьківську директорію в Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,6 +21,13 @@ from models import (
     NotificationHistory, NotificationSettings, Log, BotConfig
 )
 from air_alert import get_air_alert_manager
+
+# Завантажуємо змінні середовища
+load_dotenv("config.env")
+
+# Telegram Bot API для відправки повідомлень
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}" if TELEGRAM_BOT_TOKEN else None
 
 # Ініціалізація Flask
 app = Flask(__name__)
@@ -145,6 +154,36 @@ def delete_user(user_id):
     return redirect(url_for('users'))
 
 
+def send_telegram_message(user_id: int, message: str) -> bool:
+    """
+    Відправка повідомлення користувачу через Telegram Bot API
+    
+    Args:
+        user_id: ID користувача в Telegram
+        message: Текст повідомлення
+        
+    Returns:
+        True якщо повідомлення відправлено успішно, False інакше
+    """
+    if not TELEGRAM_API_URL:
+        return False
+    
+    try:
+        response = requests.post(
+            f"{TELEGRAM_API_URL}/sendMessage",
+            json={
+                'chat_id': user_id,
+                'text': message,
+                'parse_mode': 'HTML'
+            },
+            timeout=10
+        )
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Помилка відправки повідомлення в Telegram: {e}")
+        return False
+
+
 @app.route('/users/approve/<int:user_id>', methods=['POST'])
 def approve_request(user_id):
     """Схвалення запиту на доступ"""
@@ -155,10 +194,12 @@ def approve_request(user_id):
                 flash('Запит не знайдено!', 'warning')
                 return redirect(url_for('users'))
             
+            username = request_obj.username
+            
             # Створюємо користувача з роллю 'user' за замовчуванням
             user = User(
                 user_id=request_obj.user_id,
-                username=request_obj.username,
+                username=username,
                 approved_at=datetime.now(),
                 notifications_enabled=False,
                 role='user'
@@ -167,7 +208,15 @@ def approve_request(user_id):
             session.delete(request_obj)
             session.commit()
             
-            flash(f'Запит від @{request_obj.username} схвалено!', 'success')
+            # Відправляємо повідомлення користувачу про схвалення
+            approval_message = (
+                "✅ <b>Ваш запит на доступ схвалено!</b>\n\n"
+                "Тепер ви маєте доступ до розкладу занять.\n\n"
+                "Використовуйте команду /start або /menu для початку роботи."
+            )
+            send_telegram_message(user_id, approval_message)
+            
+            flash(f'Запит від @{username} схвалено! Користувач отримав повідомлення.', 'success')
     except Exception as e:
         flash(f'Помилка схвалення запиту: {e}', 'danger')
     
@@ -184,7 +233,16 @@ def deny_request(user_id):
                 username = request_obj.username
                 session.delete(request_obj)
                 session.commit()
-                flash(f'Запит від @{username} відхилено!', 'success')
+                
+                # Відправляємо повідомлення користувачу про відхилення
+                denial_message = (
+                    "❌ <b>Ваш запит на доступ відхилено</b>\n\n"
+                    "На жаль, ваш запит на доступ до розкладу занять було відхилено адміністратором.\n\n"
+                    "Якщо ви вважаєте, що це помилка, зверніться до адміністратора."
+                )
+                send_telegram_message(user_id, denial_message)
+                
+                flash(f'Запит від @{username} відхилено! Користувач отримав повідомлення.', 'success')
             else:
                 flash('Запит не знайдено!', 'warning')
     except Exception as e:
@@ -455,12 +513,33 @@ def settings():
             
             config_dict = {c.key: c.value for c in configs}
             
+            # Обчислюємо поточний тип тижня (автоматично) та наступну дату перемикання
+            current_week_type = None
+            next_switch_date = None
+            if metadata and metadata.numerator_start_date:
+                from schedule_handler import get_schedule_handler
+                schedule_handler = get_schedule_handler()
+                if schedule_handler:
+                    current_week_type = schedule_handler.get_current_week_type()
+                    
+                    # Обчислюємо наступну неділю (дата перемикання)
+                    today = datetime.now().date()
+                    days_since_sunday = today.weekday() + 1  # Днів з неділі (1-7)
+                    if days_since_sunday == 7:
+                        # Сьогодні неділя, наступна неділя через тиждень
+                        next_switch_date = today + timedelta(days=7)
+                    else:
+                        # Наступна неділя
+                        next_switch_date = today + timedelta(days=(7 - days_since_sunday))
+            
             return render_template('settings.html',
                                  metadata=metadata,
-                                 configs=config_dict)
+                                 configs=config_dict,
+                                 current_week_type=current_week_type,
+                                 next_switch_date=next_switch_date)
     except Exception as e:
         flash(f'Помилка завантаження налаштувань: {e}', 'danger')
-        return render_template('settings.html', metadata=None, configs={})
+        return render_template('settings.html', metadata=None, configs={}, current_week_type=None, next_switch_date=None)
 
 
 @app.route('/settings/update', methods=['POST'])
@@ -474,17 +553,67 @@ def update_settings():
                 session.add(metadata)
             
             # Оновлюємо поля
+            week_changed = False
             if 'group_name' in request.form:
                 metadata.group_name = request.form['group_name']
             if 'academic_year' in request.form:
                 metadata.academic_year = request.form['academic_year']
             if 'current_week' in request.form:
-                metadata.current_week = request.form['current_week']
+                old_week = metadata.current_week
+                new_week = request.form['current_week']
+                # Встановлюємо дату відліку якщо змінився тип тижня або дата ще не встановлена
+                if old_week != new_week or not metadata.numerator_start_date:
+                    # Встановлюємо новий тип тижня
+                    metadata.current_week = new_week
+                    week_changed = True
+                    
+                    # Встановлюємо дату початку відліку для автоматичного перемикання
+                    # Знаходимо поточну неділю (початок поточного тижня)
+                    today = datetime.now().date()
+                    # weekday(): 0 = понеділок, 6 = неділя
+                    # Знаходимо найближчу минулу неділю (або сьогодні, якщо сьогодні неділя)
+                    days_since_sunday = today.weekday() + 1  # Днів з неділі (1-7)
+                    if days_since_sunday == 7:
+                        # Сьогодні неділя
+                        current_sunday = today
+                    else:
+                        # Знаходимо минулу неділю (початок поточного тижня)
+                        current_sunday = today - timedelta(days=days_since_sunday)
+                    
+                    # Встановлюємо дату початку відліку = поточна неділя
+                    # Якщо встановлено "Чисельник", то week_number = 0 (парне) = чисельник
+                    # Якщо встановлено "Знаменник", то зміщуємо дату на тиждень назад,
+                    # щоб поточна неділя мала week_number = 1 (непарне) = знаменник
+                    if new_week == "denominator":
+                        # Зміщуємо дату на тиждень назад, щоб поточна неділя була знаменником
+                        reference_date = current_sunday - timedelta(days=7)
+                    else:
+                        # Для чисельника поточна неділя = дата початку відліку
+                        reference_date = current_sunday
+                    
+                    # Встановлюємо дату початку відліку
+                    metadata.numerator_start_date = reference_date.strftime("%Y-%m-%d")
+                    
+                    week_type_display = "чисельник" if new_week == "numerator" else "знаменник"
+                    flash(f'Тип тижня встановлено на "{week_type_display}" для поточного тижня. Система автоматично перемикатиметься кожну неділю.', 'success')
             
             metadata.last_updated = datetime.now()
             session.commit()
             
-            flash('Налаштування оновлено!', 'success')
+            # Очищаємо кеш розкладу при зміні типу тижня
+            if week_changed:
+                try:
+                    from schedule_handler import get_schedule_handler
+                    schedule_handler = get_schedule_handler()
+                    if schedule_handler:
+                        schedule_handler._cache = {}  # Очищаємо кеш
+                        schedule_handler._cache_time = None
+                except Exception as e:
+                    # Логуємо помилку, але не блокуємо збереження налаштувань
+                    print(f"Помилка очищення кешу: {e}")
+            
+            if not week_changed:
+                flash('Налаштування оновлено!', 'success')
     except Exception as e:
         flash(f'Помилка оновлення налаштувань: {e}', 'danger')
     
@@ -679,15 +808,52 @@ def academic():
     """Академічний календар"""
     try:
         with get_session() as session:
-            periods = session.query(AcademicPeriod).all()
+            # Отримуємо параметр фільтрації по викладачу
+            teacher_filter = request.args.get('teacher_id', type=int)
+            
+            # Отримуємо всіх викладачів для вибору
+            teachers = session.query(User).all()
+            existing_teacher_ids = {t.user_id for t in teachers}
+            
+            # Також додаємо викладачів, які є в періодах (teacher_user_id), але можуть не бути в списку користувачів
+            teachers_in_periods = session.query(AcademicPeriod.teacher_user_id).distinct().all()
+            teacher_ids_in_periods = {t[0] for t in teachers_in_periods if t[0] is not None}
+            
+            # Додаємо викладачів з періодів, яких немає в списку
+            for teacher_id in teacher_ids_in_periods:
+                if teacher_id not in existing_teacher_ids:
+                    user = session.query(User).filter(User.user_id == teacher_id).first()
+                    if user:
+                        teachers.append(user)
+            
+            # Отримуємо періоди з фільтрацією
+            # Показуємо тільки періоди з встановленим teacher_user_id (не загальні)
+            query = session.query(AcademicPeriod).filter(AcademicPeriod.teacher_user_id.isnot(None))
+            if teacher_filter:
+                query = query.filter(AcademicPeriod.teacher_user_id == teacher_filter)
+            periods = query.order_by(AcademicPeriod.start_date).all()
+            
             metadata = session.query(ScheduleMetadata).first()
+            
+            # Створюємо словник викладачів для відображення
+            teachers_dict = {t.user_id: t for t in teachers}
+            
+            # Додаємо інформацію про викладача до періодів
+            for period in periods:
+                if period.teacher_user_id and period.teacher_user_id in teachers_dict:
+                    teacher = teachers_dict[period.teacher_user_id]
+                    period.teacher_display = teacher.full_name if teacher.full_name else (teacher.username or f"ID: {teacher.user_id}")
+                else:
+                    period.teacher_display = f"ID: {period.teacher_user_id}" if period.teacher_user_id else "Загальний"
             
             return render_template('academic.html',
                                  periods=periods,
-                                 metadata=metadata)
+                                 metadata=metadata,
+                                 teachers=teachers,
+                                 selected_teacher_id=teacher_filter)
     except Exception as e:
         flash(f'Помилка завантаження календаря: {e}', 'danger')
-        return render_template('academic.html', periods=[], metadata=None)
+        return render_template('academic.html', periods=[], metadata=None, teachers=[], selected_teacher_id=None)
 
 
 @app.route('/academic/add', methods=['POST'])
@@ -695,6 +861,13 @@ def add_academic_period():
     """Додавання академічного періоду"""
     try:
         with get_session() as session:
+            teacher_user_id = request.form.get('teacher_user_id', type=int)
+            
+            # Перевіряємо, що викладач обов'язково вказаний
+            if not teacher_user_id:
+                flash('Помилка: необхідно вибрати викладача для періоду!', 'danger')
+                return redirect(url_for('academic'))
+            
             period = AcademicPeriod(
                 period_id=request.form['period_id'],
                 name=request.form['name'],
@@ -702,7 +875,8 @@ def add_academic_period():
                 end_date=request.form['end_date'],
                 weeks=int(request.form['weeks']),
                 color=request.form.get('color', '🟦'),
-                description=request.form.get('description', '')
+                description=request.form.get('description', ''),
+                teacher_user_id=teacher_user_id
             )
             session.add(period)
             session.commit()
@@ -711,6 +885,10 @@ def add_academic_period():
     except Exception as e:
         flash(f'Помилка додавання періоду: {e}', 'danger')
     
+    # Перенаправляємо з фільтром
+    teacher_id = request.form.get('teacher_user_id', type=int)
+    if teacher_id:
+        return redirect(url_for('academic', teacher_id=teacher_id))
     return redirect(url_for('academic'))
 
 
@@ -721,12 +899,23 @@ def edit_academic_period(period_id):
         with get_session() as session:
             period = session.query(AcademicPeriod).filter(AcademicPeriod.id == period_id).first()
             if period:
+                teacher_user_id = request.form.get('teacher_user_id', type=int)
+                
+                # Перевіряємо, що викладач обов'язково вказаний
+                if not teacher_user_id:
+                    flash('Помилка: необхідно вибрати викладача для періоду!', 'danger')
+                    # Перенаправляємо з фільтром поточного періоду
+                    if period.teacher_user_id:
+                        return redirect(url_for('academic', teacher_id=period.teacher_user_id))
+                    return redirect(url_for('academic'))
+                
                 period.name = request.form['name']
                 period.start_date = request.form['start_date']
                 period.end_date = request.form['end_date']
                 period.weeks = int(request.form['weeks'])
                 period.color = request.form.get('color', '🟦')
                 period.description = request.form.get('description', '')
+                period.teacher_user_id = teacher_user_id
                 session.commit()
                 
                 flash(f'Період "{period.name}" оновлено!', 'success')
@@ -735,6 +924,10 @@ def edit_academic_period(period_id):
     except Exception as e:
         flash(f'Помилка редагування періоду: {e}', 'danger')
     
+    # Перенаправляємо з фільтром
+    teacher_id = request.form.get('teacher_user_id', type=int)
+    if teacher_id:
+        return redirect(url_for('academic', teacher_id=teacher_id))
     return redirect(url_for('academic'))
 
 
@@ -745,10 +938,15 @@ def delete_academic_period(period_id):
         with get_session() as session:
             period = session.query(AcademicPeriod).filter(AcademicPeriod.id == period_id).first()
             if period:
+                teacher_id = period.teacher_user_id
                 name = period.name
                 session.delete(period)
                 session.commit()
                 flash(f'Період "{name}" видалено!', 'success')
+                
+                # Перенаправляємо з фільтром, якщо він був встановлений
+                if teacher_id:
+                    return redirect(url_for('academic', teacher_id=teacher_id))
             else:
                 flash('Період не знайдено!', 'warning')
     except Exception as e:

@@ -2,7 +2,7 @@
 Модуль роботи з розкладом занять через SQLite БД
 Замінює JSON файли на роботу з БД через SQLAlchemy
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict, Any, Tuple
 
 from database import get_session
@@ -31,33 +31,61 @@ class ScheduleHandler:
         self._cache_time = datetime.now()
     
     def get_current_week_type(self) -> str:
-        """Отримання поточного типу тижня (numerator/denominator)"""
+        """
+        Отримання поточного типу тижня (numerator/denominator)
+        
+        Логіка:
+        1. Автоматичне визначення з numerator_start_date (якщо встановлено) - перемикається кожну неділю
+        2. Значення current_week (якщо автоматичне визначення недоступне)
+        3. За замовчуванням "numerator"
+        """
         try:
             with get_session() as session:
                 metadata = session.query(ScheduleMetadata).first()
                 if metadata:
-                    # Спочатку намагаємося автоматично визначити тип неділі
+                    # Спочатку намагаємося автоматично визначити на основі дати
                     if metadata.numerator_start_date:
                         auto_week = self._calculate_week_type_from_date(metadata.numerator_start_date)
                         if auto_week:
                             return auto_week
-                    return metadata.current_week or "numerator"
+                    
+                    # Якщо автоматичне визначення недоступне, використовуємо збережене значення
+                    if metadata.current_week and metadata.current_week in ["numerator", "denominator"]:
+                        return metadata.current_week
+                    
+                    # За замовчуванням
+                    return "numerator"
                 return "numerator"
         except Exception as e:
             logger.log_error(f"Помилка отримання типу тижня: {e}")
             return "numerator"
     
     def _calculate_week_type_from_date(self, numerator_start_date: str) -> Optional[str]:
-        """Автоматичне визначення типу неділі на основі дати"""
+        """
+        Автоматичне визначення типу тижня на основі дати початку відліку
+        Перемикається кожну неділю автоматично
+        """
         try:
-            numerator_start = datetime.strptime(numerator_start_date, "%Y-%m-%d")
-            current_date = datetime.now()
-            days_diff = (current_date - numerator_start).days
+            numerator_start = datetime.strptime(numerator_start_date, "%Y-%m-%d").date()
+            current_date = datetime.now().date()
+            
+            # Знаходимо поточну неділю (початок тижня)
+            days_since_sunday = current_date.weekday() + 1  # Днів з неділі (1-7)
+            if days_since_sunday == 7:
+                # Сьогодні неділя
+                current_sunday = current_date
+            else:
+                # Знаходимо минулу неділю
+                current_sunday = current_date - timedelta(days=days_since_sunday)
+            
+            # Обчислюємо різницю в тижнях між поточною неділею та датою початку
+            days_diff = (current_sunday - numerator_start).days
             week_number = days_diff // 7
             
+            # Парний номер тижня = чисельник, непарний = знаменник
             return "numerator" if week_number % 2 == 0 else "denominator"
         except Exception as e:
-            logger.log_error(f"Помилка автоматичного визначення типу неділі: {e}")
+            logger.log_error(f"Помилка автоматичного визначення типу тижня: {e}")
             return None
     
     def set_current_week_type(self, week_type: str) -> bool:

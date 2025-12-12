@@ -61,7 +61,7 @@ class ScheduleEntry(Base):
 
 
 class ScheduleMetadata(Base):
-    """Метадані розкладу (поточний тиждень, група, рік)"""
+    """Метадані розкладу (поточний тиждень, назва навчального закладу, рік)"""
     __tablename__ = 'schedule_metadata'
     
     id = Column(Integer, primary_key=True, autoincrement=True)

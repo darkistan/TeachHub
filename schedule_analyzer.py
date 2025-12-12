@@ -175,9 +175,14 @@ class ScheduleAnalyzer:
         
         return "\n".join(report_parts)
     
-    def format_full_schedule(self) -> str:
-        """Форматує повний графік навчання"""
-        data = self._load_data_from_db()
+    def format_full_schedule(self, teacher_user_id: Optional[int] = None) -> str:
+        """
+        Форматує повний графік навчання
+        
+        Args:
+            teacher_user_id: ID викладача для фільтрації (опціонально)
+        """
+        data = self._load_data_from_db(teacher_user_id)
         metadata = data['metadata']
         periods = data['periods']
         
@@ -185,7 +190,7 @@ class ScheduleAnalyzer:
         group_name = metadata['group_name'] if metadata else "KCM-24-11"
         academic_year = metadata['academic_year'] if metadata else "2025/2026"
         
-        return f"📚 **Повний графік групи {group_name}**\n🎓 Рік: {academic_year}\n\n(Детальний графік тут)"
+        return f"📚 **Повний графік навчального закладу {group_name}**\n🎓 Рік: {academic_year}\n\n(Детальний графік тут)"
 
 
 # Глобальний екземпляр
