@@ -83,14 +83,8 @@ class DatabaseManager:
             Base.metadata.create_all(bind=self.engine)
             logger.log_info("Таблиці БД успішно створені")
             
-            # Виконуємо міграції
-            self.migrate_add_full_name()
-            self.migrate_add_teacher_user_id()
-            self.migrate_update_announcements()
-            self.migrate_add_password_hash()
-            
-            # Видаляємо загальні записи без teacher_user_id
-            self.migrate_remove_orphaned_entries()
+            # Виконуємо міграції структури БД (безпечні - перевіряють наявність колонок)
+            self._run_schema_migrations()
             
             # Створюємо адміністратора за замовчуванням, якщо його немає
             self.create_default_admin()
@@ -99,6 +93,47 @@ class DatabaseManager:
         except Exception as e:
             logger.log_error(f"Помилка створення таблиць БД: {e}")
             return False
+    
+    def _run_schema_migrations(self):
+        """Виконання міграцій структури БД (додавання колонок)"""
+        try:
+            from sqlalchemy import text, inspect
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                # Міграція: full_name в users
+                if 'users' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('users')]
+                    if 'full_name' not in columns:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(200)"))
+                
+                # Міграція: teacher_user_id в schedule_entries
+                if 'schedule_entries' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('schedule_entries')]
+                    if 'teacher_user_id' not in columns:
+                        conn.execute(text("ALTER TABLE schedule_entries ADD COLUMN teacher_user_id INTEGER"))
+                
+                # Міграція: teacher_user_id в academic_periods
+                if 'academic_periods' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('academic_periods')]
+                    if 'teacher_user_id' not in columns:
+                        conn.execute(text("ALTER TABLE academic_periods ADD COLUMN teacher_user_id INTEGER"))
+                
+                # Міграція: sent_at та recipient_count в announcements
+                if 'announcements' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('announcements')]
+                    if 'sent_at' not in columns:
+                        conn.execute(text("ALTER TABLE announcements ADD COLUMN sent_at DATETIME"))
+                    if 'recipient_count' not in columns:
+                        conn.execute(text("ALTER TABLE announcements ADD COLUMN recipient_count INTEGER DEFAULT 0"))
+                
+                # Міграція: password_hash в users
+                if 'users' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('users')]
+                    if 'password_hash' not in columns:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+        except Exception as e:
+            logger.log_error(f"Помилка виконання міграцій структури БД: {e}")
     
     def create_default_admin(self):
         """Створення адміністратора за замовчуванням"""
@@ -156,106 +191,6 @@ class DatabaseManager:
         except Exception as e:
             logger.log_error(f"Помилка створення адміністратора за замовчуванням: {e}")
     
-    def migrate_add_full_name(self):
-        """Міграція: додавання колонки full_name до таблиці users"""
-        try:
-            from sqlalchemy import text, inspect
-            with self.engine.begin() as conn:
-                inspector = inspect(self.engine)
-                
-                # Перевіряємо чи існує таблиця users
-                if 'users' not in inspector.get_table_names():
-                    return
-                
-                # Перевіряємо чи існує колонка full_name
-                columns = [col['name'] for col in inspector.get_columns('users')]
-                
-                if 'full_name' not in columns:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(200)"))
-        except Exception as e:
-            logger.log_error(f"Помилка міграції додавання full_name: {e}")
-    
-    def migrate_add_teacher_user_id(self):
-        """Міграція: додавання колонки teacher_user_id до таблиць schedule_entries та academic_periods"""
-        try:
-            from sqlalchemy import text, inspect
-            with self.engine.begin() as conn:
-                inspector = inspect(self.engine)
-                
-                # Перевіряємо schedule_entries
-                if 'schedule_entries' in inspector.get_table_names():
-                    columns = [col['name'] for col in inspector.get_columns('schedule_entries')]
-                    if 'teacher_user_id' not in columns:
-                        conn.execute(text("ALTER TABLE schedule_entries ADD COLUMN teacher_user_id INTEGER"))
-                
-                # Перевіряємо academic_periods
-                if 'academic_periods' in inspector.get_table_names():
-                    columns = [col['name'] for col in inspector.get_columns('academic_periods')]
-                    if 'teacher_user_id' not in columns:
-                        conn.execute(text("ALTER TABLE academic_periods ADD COLUMN teacher_user_id INTEGER"))
-        except Exception as e:
-            logger.log_error(f"Помилка міграції додавання teacher_user_id: {e}")
-    
-    def migrate_update_announcements(self):
-        """Міграція: оновлення таблиці announcements (додати sent_at, recipient_count)"""
-        try:
-            from sqlalchemy import text, inspect
-            with self.engine.begin() as conn:
-                inspector = inspect(self.engine)
-                
-                if 'announcements' in inspector.get_table_names():
-                    columns = [col['name'] for col in inspector.get_columns('announcements')]
-                    
-                    # Додаємо sent_at якщо немає
-                    if 'sent_at' not in columns:
-                        conn.execute(text("ALTER TABLE announcements ADD COLUMN sent_at DATETIME"))
-                    
-                    # Додаємо recipient_count якщо немає
-                    if 'recipient_count' not in columns:
-                        conn.execute(text("ALTER TABLE announcements ADD COLUMN recipient_count INTEGER DEFAULT 0"))
-        except Exception as e:
-            logger.log_error(f"Помилка міграції оновлення announcements: {e}")
-    
-    def migrate_add_password_hash(self):
-        """Міграція: додавання колонки password_hash до таблиці users"""
-        try:
-            from sqlalchemy import text, inspect
-            with self.engine.begin() as conn:
-                inspector = inspect(self.engine)
-                
-                if 'users' not in inspector.get_table_names():
-                    return
-                
-                columns = [col['name'] for col in inspector.get_columns('users')]
-                
-                if 'password_hash' not in columns:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
-        except Exception as e:
-            logger.log_error(f"Помилка міграції додавання password_hash: {e}")
-    
-    def migrate_remove_orphaned_entries(self):
-        """Міграція: видалення загальних записів без teacher_user_id"""
-        try:
-            from models import ScheduleEntry, AcademicPeriod
-            with self.SessionLocal() as session:
-                # Видаляємо заняття без teacher_user_id
-                deleted_schedule = session.query(ScheduleEntry).filter(
-                    ScheduleEntry.teacher_user_id.is_(None)
-                ).delete()
-                
-                # Видаляємо періоди без teacher_user_id
-                deleted_periods = session.query(AcademicPeriod).filter(
-                    AcademicPeriod.teacher_user_id.is_(None)
-                ).delete()
-                
-                session.commit()
-                
-                if deleted_schedule > 0 or deleted_periods > 0:
-                    logger.log_info(
-                        f"Видалено загальних записів: {deleted_schedule} заняття, {deleted_periods} періодів"
-                    )
-        except Exception as e:
-            logger.log_error(f"Помилка видалення загальних записів: {e}")
     
     def drop_all_tables(self):
         """Видалення всіх таблиць (використовувати обережно!)"""
