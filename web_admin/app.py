@@ -7,8 +7,11 @@ import sys
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any
+from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_wtf import CSRFProtect
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 # Додаємо батьківську директорію в Python path
@@ -37,28 +40,165 @@ app.config['WTF_CSRF_ENABLED'] = True
 # CSRF захист
 csrf = CSRFProtect(app)
 
+# Ініціалізація Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Будь ласка, увійдіть для доступу до цієї сторінки.'
+login_manager.login_message_category = 'info'
+
 # Ініціалізація БД при запуску
 init_database()
 
 
+# Клас для Flask-Login
+class WebUser(UserMixin):
+    """Обгортка для User моделі для Flask-Login"""
+    def __init__(self, user: User):
+        # Зберігаємо всі необхідні дані безпосередньо, щоб не залежати від сесії
+        self.id = user.user_id
+        self._user_id = user.user_id
+        self._role = user.role
+        self._full_name = user.full_name
+        self._username = user.username
+    
+    def get_id(self):
+        return str(self._user_id)
+    
+    @property
+    def is_admin(self):
+        return self._role == 'admin'
+    
+    @property
+    def user_id(self):
+        return self._user_id
+    
+    @property
+    def full_name(self):
+        return self._full_name or self._username or f"ID: {self._user_id}"
+
+
+@login_manager.user_loader
+def load_user(user_id_str):
+    """Завантаження користувача для Flask-Login"""
+    try:
+        user_id = int(user_id_str)
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user and user.password_hash:  # Тільки користувачі з паролем можуть входити
+                return WebUser(user)
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def admin_required(f):
+    """Декоратор для перевірки прав адміністратора"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_admin:
+            flash('Доступ заборонено. Потрібні права адміністратора.', 'danger')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Сторінка входу"""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    
+    # Отримуємо список користувачів з паролями для вибору
+    with get_session() as session:
+        users_with_passwords = session.query(User).filter(
+            User.password_hash.isnot(None)
+        ).order_by(User.full_name, User.username).all()
+        
+        # Формуємо список для dropdown
+        users_list = []
+        for user in users_with_passwords:
+            display_name = user.full_name if user.full_name else (user.username or f"ID: {user.user_id}")
+            if user.role == 'admin':
+                display_name += " (Адмін)"
+            users_list.append({
+                'user_id': user.user_id,
+                'display_name': display_name
+            })
+    
+    if request.method == 'POST':
+        user_id_str = request.form.get('user_id', '').strip()
+        password = request.form.get('password', '')
+        
+        if not user_id_str or not password:
+            flash('Будь ласка, виберіть користувача та введіть пароль.', 'warning')
+            return render_template('login.html', users=users_list)
+        
+        try:
+            user_id = int(user_id_str)
+            with get_session() as session:
+                user = session.query(User).filter(User.user_id == user_id).first()
+                
+                if user and user.password_hash and check_password_hash(user.password_hash, password):
+                    web_user = WebUser(user)
+                    login_user(web_user, remember=True)
+                    
+                    next_page = request.args.get('next')
+                    return redirect(next_page) if next_page else redirect(url_for('dashboard'))
+                else:
+                    flash('Невірний пароль.', 'danger')
+        except ValueError:
+            flash('Помилка вибору користувача.', 'danger')
+        except Exception as e:
+            flash(f'Помилка входу: {e}', 'danger')
+    
+    return render_template('login.html', users=users_list)
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Вихід з системи"""
+    logout_user()
+    flash('Ви вийшли з системи.', 'info')
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@login_required
 def dashboard():
     """Головна сторінка - Dashboard"""
     try:
         with get_session() as session:
-            # Статистика
-            stats = {
-                'users_count': session.query(User).count(),
-                'pending_requests': session.query(PendingRequest).count(),
-                'schedule_entries': session.query(ScheduleEntry).count(),
-                'announcements_count': session.query(Announcement).count(),
-            }
+            # Для користувачів показуємо тільки їх дані
+            if current_user.is_admin:
+                stats = {
+                    'users_count': session.query(User).count(),
+                    'pending_requests': session.query(PendingRequest).count(),
+                    'schedule_entries': session.query(ScheduleEntry).count(),
+                    'announcements_count': session.query(Announcement).count(),
+                }
+                recent_logs = session.query(Log).order_by(Log.timestamp.desc()).limit(10).all()
+            else:
+                # Для звичайних користувачів - тільки їх дані
+                user_schedule_count = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == current_user.user_id
+                ).count()
+                user_periods_count = session.query(AcademicPeriod).filter(
+                    AcademicPeriod.teacher_user_id == current_user.user_id
+                ).count()
+                
+                stats = {
+                    'users_count': 1,  # Тільки вони самі
+                    'pending_requests': 0,
+                    'schedule_entries': user_schedule_count,
+                    'announcements_count': 0,  # Користувачі не бачать статистику оголошень
+                }
+                recent_logs = []
             
             # Метадані розкладу
             metadata = session.query(ScheduleMetadata).first()
-            
-            # Останні логи
-            recent_logs = session.query(Log).order_by(Log.timestamp.desc()).limit(10).all()
             
             return render_template('dashboard.html',
                                  stats=stats,
@@ -70,6 +210,7 @@ def dashboard():
 
 
 @app.route('/users')
+@admin_required
 def users():
     """Управління користувачами"""
     try:
@@ -86,6 +227,7 @@ def users():
 
 
 @app.route('/users/add', methods=['POST'])
+@admin_required
 def add_user():
     """Додавання користувача"""
     try:
@@ -119,6 +261,7 @@ def add_user():
 
 
 @app.route('/users/update-full-name/<int:user_id>', methods=['POST'])
+@admin_required
 def update_user_full_name(user_id):
     """Оновлення ПІБ викладача"""
     try:
@@ -136,6 +279,7 @@ def update_user_full_name(user_id):
 
 
 @app.route('/users/delete/<int:user_id>', methods=['POST'])
+@admin_required
 def delete_user(user_id):
     """Видалення користувача"""
     try:
@@ -185,6 +329,7 @@ def send_telegram_message(user_id: int, message: str) -> bool:
 
 
 @app.route('/users/approve/<int:user_id>', methods=['POST'])
+@admin_required
 def approve_request(user_id):
     """Схвалення запиту на доступ"""
     try:
@@ -224,6 +369,7 @@ def approve_request(user_id):
 
 
 @app.route('/users/deny/<int:user_id>', methods=['POST'])
+@admin_required
 def deny_request(user_id):
     """Відхилення запиту на доступ"""
     try:
@@ -252,6 +398,7 @@ def deny_request(user_id):
 
 
 @app.route('/users/toggle-notifications/<int:user_id>', methods=['POST'])
+@admin_required
 def toggle_notifications(user_id):
     """Перемикання оповіщень користувача"""
     try:
@@ -271,29 +418,63 @@ def toggle_notifications(user_id):
     return redirect(url_for('users'))
 
 
+@app.route('/users/set-password/<int:user_id>', methods=['POST'])
+@admin_required
+def set_user_password(user_id):
+    """Встановлення пароля для користувача"""
+    try:
+        password = request.form.get('password', '').strip()
+        
+        if not password:
+            flash('Пароль не може бути порожнім.', 'warning')
+            return redirect(url_for('users'))
+        
+        if len(password) < 6:
+            flash('Пароль повинен містити мінімум 6 символів.', 'warning')
+            return redirect(url_for('users'))
+        
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user:
+                user.password_hash = generate_password_hash(password)
+                session.commit()
+                flash(f'Пароль для @{user.username} встановлено!', 'success')
+            else:
+                flash('Користувача не знайдено!', 'warning')
+    except Exception as e:
+        flash(f'Помилка встановлення пароля: {e}', 'danger')
+    
+    return redirect(url_for('users'))
+
+
 @app.route('/schedule')
+@login_required
 def schedule():
     """Управління розкладом"""
     try:
         with get_session() as session:
-            # Отримуємо параметр фільтрації по викладачу
-            teacher_filter = request.args.get('teacher_id', type=int)
+            # Для користувачів - тільки їх розклад
+            if not current_user.is_admin:
+                teacher_filter = current_user.user_id
+            else:
+                # Для адмінів - можна вибрати викладача
+                teacher_filter = request.args.get('teacher_id', type=int)
             
-            # Отримуємо всіх викладачів для вибору
-            # Отримуємо всіх користувачів (не тільки з role='user', щоб включити всіх)
-            teachers = session.query(User).all()
-            existing_teacher_ids = {t.user_id for t in teachers}
-            
-            # Також додаємо викладачів, які є в розкладі (teacher_user_id), але можуть не бути в списку користувачів
-            teachers_in_schedule = session.query(ScheduleEntry.teacher_user_id).distinct().all()
-            teacher_ids_in_schedule = {t[0] for t in teachers_in_schedule if t[0] is not None}
-            
-            # Додаємо викладачів з розкладу, яких немає в списку
-            for teacher_id in teacher_ids_in_schedule:
-                if teacher_id not in existing_teacher_ids:
-                    user = session.query(User).filter(User.user_id == teacher_id).first()
-                    if user:
-                        teachers.append(user)
+            # Отримуємо викладачів для вибору (тільки для адмінів)
+            if current_user.is_admin:
+                teachers = session.query(User).all()
+                existing_teacher_ids = {t.user_id for t in teachers}
+                
+                teachers_in_schedule = session.query(ScheduleEntry.teacher_user_id).distinct().all()
+                teacher_ids_in_schedule = {t[0] for t in teachers_in_schedule if t[0] is not None}
+                
+                for teacher_id in teacher_ids_in_schedule:
+                    if teacher_id not in existing_teacher_ids:
+                        user = session.query(User).filter(User.user_id == teacher_id).first()
+                        if user:
+                            teachers.append(user)
+            else:
+                teachers = []
             
             # Отримуємо заняття з фільтрацією
             # Розклад показується тільки для конкретного викладача
@@ -343,6 +524,7 @@ def schedule():
 
 
 @app.route('/schedule/add', methods=['POST'])
+@admin_required
 def add_schedule_entry():
     """Додавання заняття"""
     try:
@@ -380,6 +562,7 @@ def add_schedule_entry():
 
 
 @app.route('/schedule/edit/<int:entry_id>', methods=['POST'])
+@admin_required
 def edit_schedule_entry(entry_id):
     """Редагування заняття"""
     try:
@@ -418,6 +601,7 @@ def edit_schedule_entry(entry_id):
 
 
 @app.route('/schedule/delete/<int:entry_id>', methods=['POST'])
+@admin_required
 def delete_schedule_entry(entry_id):
     """Видалення заняття"""
     try:
@@ -437,6 +621,7 @@ def delete_schedule_entry(entry_id):
 
 
 @app.route('/logs')
+@admin_required
 def logs():
     """Перегляд логів"""
     try:
@@ -486,6 +671,7 @@ def logs():
 
 
 @app.route('/logs/clear', methods=['POST'])
+@admin_required
 def clear_old_logs():
     """Очищення старих логів"""
     try:
@@ -504,6 +690,7 @@ def clear_old_logs():
 
 
 @app.route('/settings')
+@admin_required
 def settings():
     """Загальні налаштування"""
     try:
@@ -543,6 +730,7 @@ def settings():
 
 
 @app.route('/settings/update', methods=['POST'])
+@admin_required
 def update_settings():
     """Оновлення налаштувань"""
     try:
@@ -621,6 +809,7 @@ def update_settings():
 
 
 @app.route('/announcements')
+@admin_required
 def announcements():
     """Управління оголошеннями"""
     try:
@@ -665,6 +854,7 @@ def announcements():
 
 
 @app.route('/announcements/create', methods=['POST'])
+@admin_required
 def create_announcement():
     """Створення та відправка оголошення"""
     try:
@@ -716,6 +906,7 @@ def create_announcement():
 
 
 @app.route('/announcements/edit/<int:ann_id>', methods=['POST'])
+@admin_required
 def edit_announcement(ann_id):
     """Редагування оголошення"""
     try:
@@ -737,6 +928,7 @@ def edit_announcement(ann_id):
 
 
 @app.route('/announcements/delete/<int:ann_id>', methods=['POST'])
+@admin_required
 def delete_announcement(ann_id):
     """Видалення оголошення"""
     try:
@@ -754,6 +946,7 @@ def delete_announcement(ann_id):
 
 
 @app.route('/announcements/<int:ann_id>/recipients')
+@admin_required
 def announcement_recipients(ann_id):
     """Перегляд отримувачів оголошення"""
     try:
@@ -804,16 +997,25 @@ def announcement_recipients(ann_id):
 
 
 @app.route('/academic')
+@login_required
 def academic():
     """Академічний календар"""
     try:
         with get_session() as session:
-            # Отримуємо параметр фільтрації по викладачу
-            teacher_filter = request.args.get('teacher_id', type=int)
+            # Для користувачів - тільки їх періоди
+            if not current_user.is_admin:
+                teacher_filter = current_user.user_id
+            else:
+                # Для адмінів - можна вибрати викладача
+                teacher_filter = request.args.get('teacher_id', type=int)
             
-            # Отримуємо всіх викладачів для вибору
-            teachers = session.query(User).all()
-            existing_teacher_ids = {t.user_id for t in teachers}
+            # Отримуємо викладачів для вибору (тільки для адмінів)
+            if current_user.is_admin:
+                teachers = session.query(User).all()
+                existing_teacher_ids = {t.user_id for t in teachers}
+            else:
+                teachers = []
+                existing_teacher_ids = set()
             
             # Також додаємо викладачів, які є в періодах (teacher_user_id), але можуть не бути в списку користувачів
             teachers_in_periods = session.query(AcademicPeriod.teacher_user_id).distinct().all()
@@ -857,6 +1059,7 @@ def academic():
 
 
 @app.route('/academic/add', methods=['POST'])
+@admin_required
 def add_academic_period():
     """Додавання академічного періоду"""
     try:
@@ -893,6 +1096,7 @@ def add_academic_period():
 
 
 @app.route('/academic/edit/<int:period_id>', methods=['POST'])
+@admin_required
 def edit_academic_period(period_id):
     """Редагування періоду"""
     try:
@@ -932,6 +1136,7 @@ def edit_academic_period(period_id):
 
 
 @app.route('/academic/delete/<int:period_id>', methods=['POST'])
+@admin_required
 def delete_academic_period(period_id):
     """Видалення періоду"""
     try:
@@ -1011,6 +1216,7 @@ def calculate_teacher_workload(session, teacher_user_id: int) -> Dict[str, Any]:
 
 
 @app.route('/stats')
+@admin_required
 def stats():
     """Статистика використання"""
     try:

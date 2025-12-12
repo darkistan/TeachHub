@@ -87,11 +87,74 @@ class DatabaseManager:
             self.migrate_add_full_name()
             self.migrate_add_teacher_user_id()
             self.migrate_update_announcements()
+            self.migrate_add_password_hash()
+            
+            # Видаляємо загальні записи без teacher_user_id
+            self.migrate_remove_orphaned_entries()
+            
+            # Створюємо адміністратора за замовчуванням, якщо його немає
+            self.create_default_admin()
             
             return True
         except Exception as e:
             logger.log_error(f"Помилка створення таблиць БД: {e}")
             return False
+    
+    def create_default_admin(self):
+        """Створення адміністратора за замовчуванням"""
+        try:
+            from werkzeug.security import generate_password_hash
+            from models import User
+            from datetime import datetime
+            from sqlalchemy import inspect
+            
+            # Перевіряємо чи існує таблиця users
+            inspector = inspect(self.engine)
+            if 'users' not in inspector.get_table_names():
+                return
+            
+            with self.SessionLocal() as session:
+                # Перевіряємо чи є адміністратор
+                admin = session.query(User).filter(User.role == 'admin').first()
+                if admin:
+                    # Якщо адмін існує, але без пароля - встановлюємо стандартний
+                    if not admin.password_hash:
+                        default_password = "admin123"
+                        admin.password_hash = generate_password_hash(default_password)
+                        session.commit()
+                        logger.log_info(f"Встановлено стандартний пароль для адміністратора (User ID: {admin.user_id})")
+                    return  # Адмін вже існує
+                
+                # Перевіряємо чи користувач з ID=1 вже існує
+                existing_user = session.query(User).filter(User.user_id == 1).first()
+                if existing_user:
+                    # Якщо користувач існує, робимо його адміном
+                    existing_user.role = 'admin'
+                    if not existing_user.password_hash:
+                        default_password = "admin123"
+                        existing_user.password_hash = generate_password_hash(default_password)
+                    if not existing_user.full_name:
+                        existing_user.full_name = "Адміністратор"
+                    session.commit()
+                    logger.log_info(f"Користувач з ID=1 оновлено на адміністратора (пароль: admin123)")
+                    return
+                
+                # Створюємо нового адміна за замовчуванням
+                default_password = "admin123"  # Стандартний пароль
+                admin_user = User(
+                    user_id=1,
+                    username="admin",
+                    approved_at=datetime.now(),
+                    notifications_enabled=False,
+                    role='admin',
+                    full_name="Адміністратор",
+                    password_hash=generate_password_hash(default_password)
+                )
+                session.add(admin_user)
+                session.commit()
+                logger.log_info("Створено адміністратора за замовчуванням (User ID: 1, пароль: admin123)")
+        except Exception as e:
+            logger.log_error(f"Помилка створення адміністратора за замовчуванням: {e}")
     
     def migrate_add_full_name(self):
         """Міграція: додавання колонки full_name до таблиці users"""
@@ -152,6 +215,47 @@ class DatabaseManager:
                         conn.execute(text("ALTER TABLE announcements ADD COLUMN recipient_count INTEGER DEFAULT 0"))
         except Exception as e:
             logger.log_error(f"Помилка міграції оновлення announcements: {e}")
+    
+    def migrate_add_password_hash(self):
+        """Міграція: додавання колонки password_hash до таблиці users"""
+        try:
+            from sqlalchemy import text, inspect
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                if 'users' not in inspector.get_table_names():
+                    return
+                
+                columns = [col['name'] for col in inspector.get_columns('users')]
+                
+                if 'password_hash' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання password_hash: {e}")
+    
+    def migrate_remove_orphaned_entries(self):
+        """Міграція: видалення загальних записів без teacher_user_id"""
+        try:
+            from models import ScheduleEntry, AcademicPeriod
+            with self.SessionLocal() as session:
+                # Видаляємо заняття без teacher_user_id
+                deleted_schedule = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id.is_(None)
+                ).delete()
+                
+                # Видаляємо періоди без teacher_user_id
+                deleted_periods = session.query(AcademicPeriod).filter(
+                    AcademicPeriod.teacher_user_id.is_(None)
+                ).delete()
+                
+                session.commit()
+                
+                if deleted_schedule > 0 or deleted_periods > 0:
+                    logger.log_info(
+                        f"Видалено загальних записів: {deleted_schedule} заняття, {deleted_periods} періодів"
+                    )
+        except Exception as e:
+            logger.log_error(f"Помилка видалення загальних записів: {e}")
     
     def drop_all_tables(self):
         """Видалення всіх таблиць (використовувати обережно!)"""

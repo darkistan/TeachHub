@@ -148,6 +148,9 @@
                                 </form>
                             </td>
                             <td>
+                                <button class="btn btn-sm btn-info" onclick="showSetPasswordModal({{ user.user_id }}, '@{{ user.username }}')">
+                                    <i class="bi bi-key"></i> {% if user.password_hash %}Змінити пароль{% else %}Встановити пароль{% endif %}
+                                </button>
                                 <button class="btn btn-sm btn-warning" onclick="showEditFullNameModal({{ user.user_id }}, '{{ user.full_name or '' }}', '@{{ user.username }}')">
                                     <i class="bi bi-pencil"></i> Редагувати ПІБ
                                 </button>
@@ -168,6 +171,34 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальне вікно встановлення пароля -->
+<div class="modal fade" id="setPasswordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Встановити пароль для користувача</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="setPasswordForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <p>Користувач: <strong id="setPasswordUsername"></strong></p>
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Новий пароль</label>
+                        <input type="password" class="form-control" id="new_password" name="password" 
+                               placeholder="Мінімум 6 символів" required minlength="6">
+                        <small class="text-muted">Пароль має містити мінімум 6 символів</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Встановити пароль</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -264,6 +295,13 @@
         
         document.getElementById('users_count').textContent = visibleCount;
     });
+    
+    function showSetPasswordModal(userId, username) {
+        document.getElementById('setPasswordUsername').textContent = username;
+        document.getElementById('new_password').value = '';
+        document.getElementById('setPasswordForm').action = `/users/set-password/${userId}`;
+        new bootstrap.Modal(document.getElementById('setPasswordModal')).show();
+    }
     
     function showEditFullNameModal(userId, currentFullName, username) {
         document.getElementById('editFullNameUsername').textContent = username;

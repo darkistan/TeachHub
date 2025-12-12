@@ -29,26 +29,31 @@
                             <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
+                    {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{url_for('users')}}">
                             <i class="bi bi-people"></i> Користувачі
                         </a>
                     </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{url_for('schedule')}}">
                             <i class="bi bi-calendar3"></i> Розклад
                         </a>
                     </li>
+                    {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{url_for('announcements')}}">
                             <i class="bi bi-megaphone"></i> Оголошення
                         </a>
                     </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{url_for('academic')}}">
                             <i class="bi bi-calendar-range"></i> Прогрес навчання
                         </a>
                     </li>
+                    {% if current_user.is_authenticated and current_user.is_admin %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{url_for('logs')}}">
                             <i class="bi bi-file-text"></i> Логи
@@ -64,8 +69,25 @@
                             <i class="bi bi-gear"></i> Налаштування
                         </a>
                     </li>
+                    {% endif %}
                 </ul>
                 <div class="d-flex align-items-center">
+                    {% if current_user.is_authenticated %}
+                    <!-- Інформація про користувача -->
+                    <div class="me-3">
+                        <span class="badge bg-light text-dark">
+                            <i class="bi bi-person-circle"></i> 
+                            {{ current_user.full_name }}
+                            {% if current_user.is_admin %}
+                                <span class="badge bg-danger ms-1">Адмін</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <!-- Кнопка виходу -->
+                    <a href="{{url_for('logout')}}" class="btn btn-outline-light btn-sm me-3">
+                        <i class="bi bi-box-arrow-right"></i> Вийти
+                    </a>
+                    {% endif %}
                     <!-- Статус тривоги -->
                     <div id="alert-status" class="me-3">
                         <span class="badge bg-secondary">
