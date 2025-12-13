@@ -35,6 +35,7 @@ load_dotenv("config.env")
 # Telegram Bot API для відправки повідомлень
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}" if TELEGRAM_BOT_TOKEN else None
+DEVELOPER_TELEGRAM_ID = os.getenv("DEVELOPER_TELEGRAM_ID")
 
 # Ініціалізація Flask
 app = Flask(__name__)
@@ -201,19 +202,67 @@ def dashboard():
                 }
                 recent_logs = session.query(Log).order_by(Log.timestamp.desc()).limit(10).all()
             else:
-                # Для звичайних користувачів - тільки їх дані
-                user_schedule_count = session.query(ScheduleEntry).filter(
-                    ScheduleEntry.teacher_user_id == current_user.user_id
-                ).count()
-                user_periods_count = session.query(AcademicPeriod).filter(
-                    AcademicPeriod.teacher_user_id == current_user.user_id
+                # Для звичайних користувачів - статистика в годинах та корисна інформація
+                # Розраховуємо навантаження в годинах
+                workload = calculate_teacher_workload(session, current_user.user_id)
+                
+                # Отримуємо заняття для чисельника та знаменника окремо
+                numerator_entries = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == current_user.user_id,
+                    ScheduleEntry.week_type == 'numerator'
                 ).count()
                 
+                denominator_entries = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == current_user.user_id,
+                    ScheduleEntry.week_type == 'denominator'
+                ).count()
+                
+                # Розраховуємо навантаження для чисельника та знаменника
+                numerator_workload = calculate_teacher_workload_by_week_type(session, current_user.user_id, 'numerator')
+                denominator_workload = calculate_teacher_workload_by_week_type(session, current_user.user_id, 'denominator')
+                
+                # Отримуємо найближчі заняття (сьогодні та завтра)
+                # Мапінг днів тижня (Python weekday: 0=Monday, 6=Sunday)
+                weekday_map = {
+                    0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday',
+                    4: 'friday', 5: 'saturday', 6: 'sunday'
+                }
+                today = datetime.now().date()
+                today_weekday = weekday_map[today.weekday()]
+                tomorrow = today + timedelta(days=1)
+                tomorrow_weekday = weekday_map[tomorrow.weekday()]
+                
+                # Визначаємо поточний тип тижня
+                from schedule_handler import get_schedule_handler
+                schedule_handler = get_schedule_handler()
+                current_week_type = schedule_handler.get_current_week_type() if schedule_handler else 'numerator'
+                
+                # Заняття на сьогодні (показуємо заняття для поточного типу тижня)
+                today_lessons = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == current_user.user_id,
+                    ScheduleEntry.day_of_week == today_weekday,
+                    ScheduleEntry.week_type == current_week_type
+                ).order_by(ScheduleEntry.time).all()
+                
+                # Заняття на завтра
+                tomorrow_lessons = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == current_user.user_id,
+                    ScheduleEntry.day_of_week == tomorrow_weekday,
+                    ScheduleEntry.week_type == current_week_type
+                ).order_by(ScheduleEntry.time).all()
+                
                 stats = {
-                    'users_count': 1,  # Тільки вони самі
-                    'pending_requests': 0,
-                    'schedule_entries': user_schedule_count,
-                    'announcements_count': 0,  # Користувачі не бачать статистику оголошень
+                    'total_hours': workload['total_hours'],
+                    'lessons_count': workload['lessons_count'],
+                    'numerator_hours': numerator_workload['total_hours'],
+                    'numerator_lessons': numerator_workload['lessons_count'],
+                    'denominator_hours': denominator_workload['total_hours'],
+                    'denominator_lessons': denominator_workload['lessons_count'],
+                    'by_day': workload['by_day'],
+                    'by_type': workload['by_type'],
+                    'today_lessons': today_lessons,
+                    'tomorrow_lessons': tomorrow_lessons,
+                    'current_week_type': current_week_type
                 }
                 recent_logs = []
             
@@ -240,10 +289,11 @@ def users():
             
             return render_template('users.html',
                                  users=all_users,
-                                 pending_requests=pending)
+                                 pending_requests=pending,
+                                 developer_telegram_id=DEVELOPER_TELEGRAM_ID)
     except Exception as e:
         flash(f'Помилка завантаження користувачів: {e}', 'danger')
-        return render_template('users.html', users=[], pending_requests=[])
+        return render_template('users.html', users=[], pending_requests=[], developer_telegram_id=None)
 
 
 @app.route('/users/add', methods=['POST'])
@@ -306,6 +356,17 @@ def delete_user(user_id):
         with get_session() as session:
             user = session.query(User).filter(User.user_id == user_id).first()
             if user:
+                # Забороняємо видалення адміністраторів
+                if user.role == 'admin':
+                    flash('Неможливо видалити адміністратора!', 'danger')
+                    return redirect(url_for('users'))
+                
+                # Забороняємо видалення розробника
+                developer_id = DEVELOPER_TELEGRAM_ID
+                if developer_id and str(user_id) == str(developer_id):
+                    flash('Неможливо видалити розробника системи!', 'danger')
+                    return redirect(url_for('users'))
+                
                 username = user.username
                 session.delete(user)
                 session.commit()
@@ -800,16 +861,24 @@ def logs():
 @app.route('/logs/clear', methods=['POST'])
 @admin_required
 def clear_old_logs():
-    """Очищення старих логів"""
+    """Очищення логів"""
     try:
-        days = int(request.form.get('days', 30))
+        action = request.form.get('action', 'old')  # 'old' або 'all'
         
         with get_session() as session:
-            cutoff_date = datetime.now() - timedelta(days=days)
-            deleted = session.query(Log).filter(Log.timestamp < cutoff_date).delete()
-            session.commit()
-            
-            flash(f'Видалено {deleted} записів логів старше {days} днів', 'success')
+            if action == 'all':
+                # Видаляємо всі логи
+                deleted = session.query(Log).count()
+                session.query(Log).delete()
+                session.commit()
+                flash(f'Видалено всі логи ({deleted} записів)', 'success')
+            else:
+                # Видаляємо старі логи
+                days = int(request.form.get('days', 30))
+                cutoff_date = datetime.now() - timedelta(days=days)
+                deleted = session.query(Log).filter(Log.timestamp < cutoff_date).delete()
+                session.commit()
+                flash(f'Видалено {deleted} записів логів старше {days} днів', 'success')
     except Exception as e:
         flash(f'Помилка очищення логів: {e}', 'danger')
     
@@ -933,6 +1002,50 @@ def update_settings():
         flash(f'Помилка оновлення налаштувань: {e}', 'danger')
     
     return redirect(url_for('settings'))
+
+
+@app.route('/contact-developer', methods=['GET', 'POST'])
+@login_required
+def contact_developer():
+    """Форма зв'язку з розробником"""
+    developer_configured = bool(DEVELOPER_TELEGRAM_ID)
+    
+    if request.method == 'POST':
+        try:
+            subject = request.form.get('subject', '').strip()
+            message = request.form.get('message', '').strip()
+            
+            if not subject or not message:
+                flash('Заповніть всі поля!', 'warning')
+                return render_template('contact_developer.html')
+            
+            if not DEVELOPER_TELEGRAM_ID:
+                flash('ID розробника не налаштовано в конфігурації!', 'danger')
+                return render_template('contact_developer.html')
+            
+            # Формуємо повідомлення для розробника
+            admin_name = current_user.full_name or current_user.username or f"ID: {current_user.user_id}"
+            telegram_message = (
+                f"🔧 <b>Повідомлення від адміністратора</b>\n\n"
+                f"👤 <b>Від:</b> {admin_name}\n"
+                f"🆔 <b>User ID:</b> {current_user.user_id}\n"
+                f"📋 <b>Тема:</b> {subject}\n\n"
+                f"💬 <b>Повідомлення:</b>\n{message}"
+            )
+            
+            # Відправляємо повідомлення розробнику
+            developer_id = int(DEVELOPER_TELEGRAM_ID)
+            if send_telegram_message(developer_id, telegram_message):
+                flash('Повідомлення успішно відправлено розробнику!', 'success')
+            else:
+                flash('Помилка відправки повідомлення. Перевірте налаштування бота.', 'danger')
+            
+            return redirect(url_for('contact_developer'))
+        except Exception as e:
+            flash(f'Помилка відправки повідомлення: {e}', 'danger')
+            return render_template('contact_developer.html', developer_configured=developer_configured)
+    
+    return render_template('contact_developer.html', developer_configured=developer_configured)
 
 
 @app.route('/announcements')
@@ -1680,6 +1793,49 @@ def calculate_teacher_workload(session, teacher_user_id: int) -> Dict[str, Any]:
         }
     except Exception as e:
         return {'total_hours': 0, 'by_day': {}, 'by_type': {}, 'lessons_count': 0}
+
+
+def calculate_teacher_workload_by_week_type(session, teacher_user_id: int, week_type: str) -> Dict[str, Any]:
+    """
+    Розрахунок навантаження годин для викладача за конкретний тип тижня
+    
+    Args:
+        session: SQLAlchemy session
+        teacher_user_id: ID викладача
+        week_type: Тип тижня ('numerator', 'denominator')
+        
+    Returns:
+        Словник з навантаженням: total_hours, lessons_count
+    """
+    try:
+        # Отримуємо заняття викладача для конкретного типу тижня
+        entries = session.query(ScheduleEntry).filter(
+            ScheduleEntry.teacher_user_id == teacher_user_id,
+            ScheduleEntry.week_type == week_type
+        ).all()
+        
+        total_hours = 0
+        lessons_count = 0
+        
+        for entry in entries:
+            try:
+                time_str = entry.time
+                if '-' in time_str:
+                    start_str, end_str = time_str.split('-')
+                    start = datetime.strptime(start_str, "%H:%M")
+                    end = datetime.strptime(end_str, "%H:%M")
+                    duration = (end - start).total_seconds() / 3600
+                    total_hours += duration
+                    lessons_count += 1
+            except (ValueError, AttributeError):
+                continue
+        
+        return {
+            'total_hours': round(total_hours, 2),
+            'lessons_count': lessons_count
+        }
+    except Exception as e:
+        return {'total_hours': 0, 'lessons_count': 0}
 
 
 @app.route('/stats')

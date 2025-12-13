@@ -95,8 +95,16 @@
                     </thead>
                     <tbody>
                         {% for user in users %}
+                        {% set is_developer = developer_telegram_id and user.user_id|string == developer_telegram_id|string %}
                         <tr>
-                            <td>{{ user.user_id }}</td>
+                            <td>
+                                {{ user.user_id }}
+                                {% if is_developer %}
+                                <span class="badge bg-info ms-1" title="Розробник системи">
+                                    <i class="bi bi-code-slash"></i> Розробник
+                                </span>
+                                {% endif %}
+                            </td>
                             <td>@{{ user.username }}</td>
                             <td>
                                 {% if user.full_name %}
@@ -127,6 +135,8 @@
                                 <button class="btn btn-sm btn-warning" onclick="showEditFullNameModal({{ user.user_id }}, '{{ user.full_name or '' }}', '@{{ user.username }}')">
                                     <i class="bi bi-pencil"></i> Редагувати ПІБ
                                 </button>
+                                {% set is_developer = developer_telegram_id and user.user_id|string == developer_telegram_id|string %}
+                                {% if user.role != 'admin' and not is_developer %}
                                 <form method="POST" action="{{ url_for('delete_user', user_id=user.user_id) }}" 
                                       onsubmit="return confirm('Видалити викладача @{{ user.username }}?');" style="display:inline;">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -134,6 +144,12 @@
                                         <i class="bi bi-trash"></i> Видалити
                                     </button>
                                 </form>
+                                {% else %}
+                                <button class="btn btn-sm btn-danger" disabled 
+                                        title="{% if user.role == 'admin' %}Неможливо видалити адміністратора{% elif is_developer %}Неможливо видалити розробника системи{% endif %}">
+                                    <i class="bi bi-trash"></i> Видалити
+                                </button>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}

@@ -29,6 +29,27 @@
 </div>
 <button type="submit" class="btn btn-primary">Зберегти</button>
 </form>
+
+<!-- Інформація про відновлення пароля -->
+<div class="card mt-4 border-info">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="bi bi-key"></i> Відновлення пароля адміністратора</h5>
+    </div>
+    <div class="card-body">
+        <p>Якщо ви забули пароль адміністратора після зміни стандартного, виконайте наступні кроки:</p>
+        <ol>
+            <li>Зупиніть веб-інтерфейс (якщо він запущений)</li>
+            <li>Запустіть скрипт <code>reset_admin_password.bat</code> з кореневої директорії проекту</li>
+            <li>Введіть новий пароль за запитом</li>
+            <li>Запустіть веб-інтерфейс знову та увійдіть з новим паролем</li>
+        </ol>
+        <div class="alert alert-warning mb-0">
+            <i class="bi bi-exclamation-triangle"></i> 
+            <strong>Увага:</strong> Цей метод працює тільки для відновлення пароля адміністратора. 
+            Для звичайних користувачів пароль може змінити тільки адміністратор через веб-інтерфейс.
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 
