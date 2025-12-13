@@ -351,7 +351,7 @@ def update_user_full_name(user_id):
 @app.route('/users/delete/<int:user_id>', methods=['POST'])
 @admin_required
 def delete_user(user_id):
-    """Видалення користувача"""
+    """Видалення користувача та всіх пов'язаних даних"""
     try:
         with get_session() as session:
             user = session.query(User).filter(User.user_id == user_id).first()
@@ -368,13 +368,100 @@ def delete_user(user_id):
                     return redirect(url_for('users'))
                 
                 username = user.username
+                
+                # Видаляємо пов'язані дані користувача
+                # Деякі дані залишаємо для статистики та аудиту
+                deleted_count = 0
+                kept_for_stats = 0
+                
+                # 1. Видаляємо запити на доступ (не потрібні для статистики)
+                pending_deleted = session.query(PendingRequest).filter(
+                    PendingRequest.user_id == user_id
+                ).delete()
+                deleted_count += pending_deleted
+                
+                # 2. Видаляємо заняття викладача (поточні дані, не статистика)
+                schedule_deleted = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == user_id
+                ).delete()
+                deleted_count += schedule_deleted
+                
+                # 3. Видаляємо академічні періоди викладача (поточні дані)
+                periods_deleted = session.query(AcademicPeriod).filter(
+                    AcademicPeriod.teacher_user_id == user_id
+                ).delete()
+                deleted_count += periods_deleted
+                
+                # 4. ЗАЛИШАЄМО записи отримувачів оголошень для статистики відправки
+                # (скільки оголошень було відправлено, статистика доставки)
+                announcement_recipients_count = session.query(AnnouncementRecipient).filter(
+                    AnnouncementRecipient.recipient_user_id == user_id
+                ).count()
+                kept_for_stats += announcement_recipients_count
+                
+                # 5. Оновлюємо групи, де користувач був куратором (встановлюємо NULL)
+                groups_updated = session.query(Group).filter(
+                    Group.curator_user_id == user_id
+                ).update({Group.curator_user_id: None})
+                deleted_count += groups_updated
+                
+                # 6. ЗАЛИШАЄМО закриті опитування для статистики (активні видаляємо)
+                # Видаляємо тільки активні опитування, створені користувачем
+                active_polls_deleted = session.query(Poll).filter(
+                    Poll.author_id == user_id,
+                    Poll.is_closed == False
+                ).delete()
+                deleted_count += active_polls_deleted
+                
+                # Рахуємо закриті опитування, які залишаємо
+                closed_polls_count = session.query(Poll).filter(
+                    Poll.author_id == user_id,
+                    Poll.is_closed == True
+                ).count()
+                kept_for_stats += closed_polls_count
+                
+                # 7. ЗАЛИШАЄМО відповіді користувача на опитування для статистики
+                # (результати опитувань важливі для аналітики)
+                poll_responses_count = session.query(PollResponse).filter(
+                    PollResponse.user_id == user_id
+                ).count()
+                kept_for_stats += poll_responses_count
+                
+                # 8. ЗАЛИШАЄМО історію оповіщень для статистики
+                # (скільки оповіщень було відправлено користувачу)
+                notification_history_count = session.query(NotificationHistory).filter(
+                    NotificationHistory.user_id == user_id
+                ).count()
+                kept_for_stats += notification_history_count
+                
+                # 9. Видаляємо налаштування оповіщень (не статистика)
+                notification_settings_deleted = session.query(NotificationSettings).filter(
+                    NotificationSettings.user_id == user_id
+                ).delete()
+                deleted_count += notification_settings_deleted
+                
+                # 10. ЗАЛИШАЄМО логи користувача для аудиту та статистики
+                logs_count = session.query(Log).filter(Log.user_id == user_id).count()
+                kept_for_stats += logs_count
+                
+                # 11. Видаляємо самого користувача
                 session.delete(user)
                 session.commit()
-                flash(f'Користувача @{username} видалено!', 'success')
+                
+                # Формуємо повідомлення з інформацією про збережені дані
+                message = f'Користувача @{username} видалено!'
+                if deleted_count > 0:
+                    message += f' Видалено {deleted_count} записів.'
+                if kept_for_stats > 0:
+                    message += f' Збережено {kept_for_stats} записів для статистики та аудиту.'
+                
+                flash(message, 'success')
             else:
                 flash('Користувача не знайдено!', 'warning')
     except Exception as e:
         flash(f'Помилка видалення користувача: {e}', 'danger')
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
     
     return redirect(url_for('users'))
 

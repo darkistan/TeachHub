@@ -80,8 +80,29 @@ class DatabaseManager:
     def init_db(self):
         """Створення всіх таблиць в БД"""
         try:
+            from sqlalchemy import inspect
+            
+            # Перевіряємо, чи таблиці вже існують
+            inspector = inspect(self.engine)
+            existing_tables = set(inspector.get_table_names())
+            
+            # Отримуємо список таблиць, які мають бути створені
+            expected_tables = set(Base.metadata.tables.keys())
+            
+            # Створюємо таблиці (якщо вони не існують, create_all їх створить)
             Base.metadata.create_all(bind=self.engine)
-            logger.log_info("Таблиці БД успішно створені")
+            
+            # Перевіряємо, чи були створені нові таблиці
+            inspector = inspect(self.engine)
+            new_tables = set(inspector.get_table_names())
+            created_tables = new_tables - existing_tables
+            
+            # Логуємо тільки якщо були створені нові таблиці
+            if created_tables:
+                logger.log_info(f"Створено нові таблиці БД: {', '.join(sorted(created_tables))}")
+            elif not existing_tables:
+                # Якщо таблиць не було взагалі, значить це перша ініціалізація
+                logger.log_info("Таблиці БД успішно створені")
             
             # Виконуємо міграції
             self.migrate_add_full_name()
