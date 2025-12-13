@@ -55,6 +55,22 @@ login_manager.login_message_category = 'info'
 init_database()
 
 
+# Context processor для передачі metadata у всі шаблони
+@app.context_processor
+def inject_metadata():
+    """Додає metadata до всіх шаблонів"""
+    try:
+        with get_session() as session:
+            metadata = session.query(ScheduleMetadata).first()
+            if metadata:
+                # Витягуємо значення всередині сесії, щоб уникнути DetachedInstanceError
+                academic_year = metadata.academic_year
+                return dict(global_metadata={'academic_year': academic_year})
+            return dict(global_metadata=None)
+    except Exception:
+        return dict(global_metadata=None)
+
+
 # Клас для Flask-Login
 class WebUser(UserMixin):
     """Обгортка для User моделі для Flask-Login"""

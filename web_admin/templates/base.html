@@ -46,66 +46,71 @@
                             <i class="bi bi-calendar3"></i> Розклад
                         </a>
                     </li>
-                    {% if current_user.is_authenticated and current_user.is_admin %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{url_for('announcements')}}">
-                            <i class="bi bi-megaphone"></i> Оголошення
-                        </a>
-                        <a class="nav-link" href="{{url_for('polls')}}">
-                            <i class="bi bi-bar-chart"></i> Опитування
-                        </a>
-                    </li>
-                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{url_for('academic')}}">
                             <i class="bi bi-calendar-range"></i> Прогрес навчання
                         </a>
                     </li>
                     {% if current_user.is_authenticated and current_user.is_admin %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{url_for('logs')}}">
-                            <i class="bi bi-file-text"></i> Логи
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="communicationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-broadcast"></i> Комунікації
                         </a>
+                        <ul class="dropdown-menu" aria-labelledby="communicationsDropdown">
+                            <li><a class="dropdown-item" href="{{url_for('announcements')}}">
+                                <i class="bi bi-megaphone"></i> Оголошення
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{url_for('polls')}}">
+                                <i class="bi bi-bar-chart"></i> Опитування
+                            </a></li>
+                        </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{url_for('stats')}}">
-                            <i class="bi bi-bar-chart"></i> Статистика
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-tools"></i> Адміністрування
                         </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{url_for('settings')}}">
-                            <i class="bi bi-gear"></i> Налаштування
-                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="adminDropdown">
+                            <li><a class="dropdown-item" href="{{url_for('logs')}}">
+                                <i class="bi bi-file-text"></i> Логи
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{url_for('stats')}}">
+                                <i class="bi bi-graph-up"></i> Статистика
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{url_for('settings')}}">
+                                <i class="bi bi-gear"></i> Налаштування
+                            </a></li>
+                        </ul>
                     </li>
                     {% endif %}
                 </ul>
-                <div class="d-flex align-items-center">
+                <div class="d-flex align-items-center gap-2">
                     {% if current_user.is_authenticated %}
+                    <!-- Статус тривоги -->
+                    <div id="alert-status">
+                        <span class="badge bg-success">
+                            <i class="bi bi-check-circle"></i> <span id="alert-text">Завантаження...</span>
+                        </span>
+                    </div>
                     <!-- Інформація про користувача -->
-                    <div class="me-3">
-                        <span class="badge bg-light text-dark user-badge">
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-light text-dark user-badge me-2">
                             <i class="bi bi-person-circle"></i> 
-                            {{ current_user.full_name }}
+                            {{ current_user.full_name or 'Користувач' }}
                             {% if current_user.is_admin %}
                                 <span class="badge bg-danger ms-1">Адмін</span>
                             {% endif %}
                         </span>
                     </div>
+                    <!-- Перемикач теми -->
+                    <button class="btn btn-outline-light btn-sm" id="theme-toggle" title="Перемкнути тему">
+                        <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
+                    </button>
                     <!-- Кнопка виходу -->
-                    <a href="{{url_for('logout')}}" class="btn btn-outline-light btn-sm me-3">
+                    <a href="{{url_for('logout')}}" class="btn btn-outline-light btn-sm">
                         <i class="bi bi-box-arrow-right"></i> Вийти
                     </a>
                     {% endif %}
-                    <!-- Статус тривоги -->
-                    <div id="alert-status" class="me-3">
-                        <span class="badge bg-secondary">
-                            <i class="bi bi-hourglass-split"></i> Завантаження...
-                        </span>
-                    </div>
-                    <!-- Перемикач теми -->
-                    <button class="btn btn-outline-light" id="theme-toggle" title="Перемкнути тему">
-                        <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
-                    </button>
                 </div>
             </div>
         </div>
@@ -133,7 +138,9 @@
     <!-- Footer -->
     <footer class="mt-5 py-3 bg-light text-center">
         <div class="container">
-            <span class="text-muted">TeachHub Admin Panel v2.0 | © 2025</span>
+            <span class="text-muted">
+                TeachHub Admin Panel | © {% if global_metadata and global_metadata.get('academic_year') %}{{ global_metadata.academic_year }}{% else %}2025{% endif %}
+            </span>
         </div>
     </footer>
 

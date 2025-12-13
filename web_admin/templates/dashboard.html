@@ -10,36 +10,56 @@
 </div>
 
 <!-- Статистика -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card bg-primary text-white">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-people"></i> Користувачі</h5>
-                <h2>{{ stats.users_count or 0 }}</h2>
+<div class="row mb-4 g-3">
+    <div class="col-md-3 col-sm-6">
+        <div class="card bg-primary text-white shadow-sm h-100">
+            <div class="card-body d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <h6 class="card-title mb-1 text-uppercase small opacity-75"><i class="bi bi-people"></i> Користувачі</h6>
+                    <h2 class="mb-0 fw-bold">{{ stats.users_count or 0 }}</h2>
+                </div>
+                <div class="ms-3">
+                    <i class="bi bi-people fs-1 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card bg-warning text-white">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-clock"></i> Запити</h5>
-                <h2>{{ stats.pending_requests or 0 }}</h2>
+    <div class="col-md-3 col-sm-6">
+        <div class="card bg-warning text-white shadow-sm h-100">
+            <div class="card-body d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <h6 class="card-title mb-1 text-uppercase small opacity-75"><i class="bi bi-clock-history"></i> Запити</h6>
+                    <h2 class="mb-0 fw-bold">{{ stats.pending_requests or 0 }}</h2>
+                </div>
+                <div class="ms-3">
+                    <i class="bi bi-clock-history fs-1 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card bg-success text-white">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-calendar3"></i> Заняття</h5>
-                <h2>{{ stats.schedule_entries or 0 }}</h2>
+    <div class="col-md-3 col-sm-6">
+        <div class="card bg-success text-white shadow-sm h-100">
+            <div class="card-body d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <h6 class="card-title mb-1 text-uppercase small opacity-75"><i class="bi bi-calendar3"></i> Заняття</h6>
+                    <h2 class="mb-0 fw-bold">{{ stats.schedule_entries or 0 }}</h2>
+                </div>
+                <div class="ms-3">
+                    <i class="bi bi-calendar3 fs-1 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card bg-info text-white">
-            <div class="card-body">
-                <h5 class="card-title"><i class="bi bi-megaphone"></i> Оголошення</h5>
-                <h2>{{ stats.announcements_count or 0 }}</h2>
+    <div class="col-md-3 col-sm-6">
+        <div class="card bg-info text-white shadow-sm h-100">
+            <div class="card-body d-flex align-items-center">
+                <div class="flex-grow-1">
+                    <h6 class="card-title mb-1 text-uppercase small opacity-75"><i class="bi bi-megaphone"></i> Оголошення</h6>
+                    <h2 class="mb-0 fw-bold">{{ stats.announcements_count or 0 }}</h2>
+                </div>
+                <div class="ms-3">
+                    <i class="bi bi-megaphone fs-1 opacity-50"></i>
+                </div>
             </div>
         </div>
     </div>
@@ -49,25 +69,45 @@
 {% if metadata %}
 <div class="row mb-4">
     <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-secondary text-white">
-                <h5><i class="bi bi-info-circle"></i> Поточний стан системи</h5>
+        <div class="card shadow-sm">
+            <div class="card-header bg-secondary text-white d-flex align-items-center">
+                <i class="bi bi-info-circle me-2"></i>
+                <h5 class="mb-0">Поточний стан системи</h5>
             </div>
             <div class="card-body">
-                <div class="row">
+                <div class="row g-3">
                     <div class="col-md-4">
-                        <strong>Назва навчального закладу:</strong> {{ metadata.group_name }}
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-building text-primary me-2 fs-5"></i>
+                            <div>
+                                <small class="text-muted d-block">Назва навчального закладу</small>
+                                <strong class="d-block">{{ metadata.group_name }}</strong>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-4">
-                        <strong>Навчальний рік:</strong> {{ metadata.academic_year }}
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-calendar-year text-success me-2 fs-5"></i>
+                            <div>
+                                <small class="text-muted d-block">Навчальний рік</small>
+                                <strong class="d-block">{{ metadata.academic_year }}</strong>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-4">
-                        <strong>Тип тижня:</strong> 
-                        {% if metadata.current_week == 'numerator' %}
-                            📚 Чисельник
-                        {% else %}
-                            📖 Знаменник
-                        {% endif %}
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-calendar-week text-warning me-2 fs-5"></i>
+                            <div>
+                                <small class="text-muted d-block">Тип тижня</small>
+                                <strong class="d-block">
+                                    {% if metadata.current_week == 'numerator' %}
+                                        <span class="badge bg-primary">📚 Чисельник</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">📖 Знаменник</span>
+                                    {% endif %}
+                                </strong>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
