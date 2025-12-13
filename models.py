@@ -199,4 +199,58 @@ class Group(Base):
         return f"<Group(name='{self.name}', curator_user_id={self.curator_user_id})>"
 
 
+class Poll(Base):
+    """Модель опитування"""
+    __tablename__ = 'polls'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    question = Column(Text, nullable=False)  # Питання опитування
+    author_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, index=True)  # ID автора (викладача)
+    author_username = Column(String(100))  # Username автора
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    closed_at = Column(DateTime, nullable=True, index=True)  # Час закриття опитування
+    is_closed = Column(Boolean, default=False, index=True)  # Чи закрите опитування
+    report_sent = Column(Boolean, default=False)  # Чи відправлено звіт користувачам
+    telegram_message_id = Column(Integer, nullable=True)  # ID повідомлення в Telegram (якщо створено через бота)
+    expires_at = Column(DateTime, nullable=True, index=True)  # Термін дії опитування (автоматичне закриття)
+    sent_to_users = Column(Boolean, default=False)  # Чи відправлено опитування користувачам
+    is_anonymous = Column(Boolean, default=False)  # Чи є опитування анонімним
+    recipient_user_ids = Column(Text, nullable=True)  # JSON список ID користувачів, яким було відправлено опитування
+    
+    def __repr__(self):
+        return f"<Poll(id={self.id}, question='{self.question[:50]}...', is_closed={self.is_closed}, is_anonymous={self.is_anonymous})>"
+
+
+class PollOption(Base):
+    """Модель варіанту відповіді в опитуванні"""
+    __tablename__ = 'poll_options'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    poll_id = Column(Integer, ForeignKey('polls.id', ondelete='CASCADE'), nullable=False, index=True)
+    option_text = Column(String(500), nullable=False)  # Текст варіанту відповіді
+    option_order = Column(Integer, default=0)  # Порядок відображення
+    
+    def __repr__(self):
+        return f"<PollOption(poll_id={self.poll_id}, option_text='{self.option_text[:30]}...')>"
+
+
+class PollResponse(Base):
+    """Модель відповіді користувача на опитування"""
+    __tablename__ = 'poll_responses'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    poll_id = Column(Integer, ForeignKey('polls.id', ondelete='CASCADE'), nullable=False, index=True)
+    option_id = Column(Integer, ForeignKey('poll_options.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False, index=True)
+    responded_at = Column(DateTime, default=datetime.now, index=True)
+    
+    # Унікальний індекс: один користувач може відповісти на опитування тільки один раз
+    __table_args__ = (
+        {'sqlite_autoincrement': True},
+    )
+    
+    def __repr__(self):
+        return f"<PollResponse(poll_id={self.poll_id}, user_id={self.user_id}, option_id={self.option_id})>"
+
+
 

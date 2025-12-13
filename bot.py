@@ -21,6 +21,7 @@ from notification_manager import get_notification_manager
 from schedule_analyzer import ScheduleAnalyzer
 from database import init_database, get_session
 from models import ScheduleEntry
+from poll_manager import get_poll_manager
 from datetime import datetime
 
 # Завантажуємо змінні середовища
@@ -1063,7 +1064,42 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.answer()
     
-    # CSRF захист для callback запитів
+    # Обробка голосування в опитуванні (без CSRF, оскільки це не команди меню)
+    if data.startswith("poll_vote_"):
+        if not auth_manager.is_user_allowed(user_id):
+            await query.answer("❌ У вас немає доступу до цієї функції.", show_alert=True)
+            return
+        
+        # Витягуємо poll_id та option_id з callback_data
+        # Формат: poll_vote_{poll_id}_{option_id}
+        parts = data.split("_")
+        if len(parts) >= 4:
+            try:
+                poll_id = int(parts[2])
+                option_id = int(parts[3])
+                
+                poll_manager = get_poll_manager()
+                if poll_manager.add_poll_response(poll_id, option_id, user_id):
+                    await query.answer("✅ Ваш голос зараховано!", show_alert=False)
+                    # Оновлюємо повідомлення з підтвердженням
+                    try:
+                        await query.edit_message_text(
+                            query.message.text + "\n\n✅ <b>Ваш голос зараховано!</b>",
+                            parse_mode='HTML'
+                        )
+                    except:
+                        # Якщо не вдалося оновити, просто відповідаємо
+                        pass
+                else:
+                    await query.answer("❌ Помилка збереження голосу. Можливо, опитування вже закрите.", show_alert=True)
+            except (ValueError, IndexError) as e:
+                logger.log_error(f"Помилка парсингу callback_data для голосування: {e}")
+                await query.answer("❌ Помилка обробки голосу", show_alert=True)
+        else:
+            await query.answer("❌ Невірний формат команди", show_alert=True)
+        return
+    
+    # CSRF захист для callback запитів (тільки для команд меню)
     if "|csrf:" in data:
         # Витягуємо оригінальні дані з перевіркою CSRF
         original_data = csrf_manager.extract_callback_data(user_id, data)
@@ -1073,7 +1109,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             return
         data = original_data
     else:
-        # Для старих callback без CSRF токенів
+        # Для старих callback без CSRF токенів (тільки команди меню)
         logger.log_csrf_attack(user_id, data)
         await query.edit_message_text("❌ Помилка безпеки. Спробуйте ще раз.")
         return
@@ -1090,6 +1126,13 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обробка текстових повідомлень"""
     user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Перевіряємо чи користувач авторизований
+    if not auth_manager.is_user_allowed(user_id):
+        logger.log_unauthorized_access_attempt(user_id, "text message")
+        await update.message.reply_text("❌ У вас немає доступу до розкладу.")
+        return
     
     # Звичайне текстове повідомлення - показуємо меню
     await update.message.reply_text(
@@ -1223,6 +1266,62 @@ def main() -> None:
         # Запускаємо цикл оповіщень
         asyncio.create_task(notification_manager.start_notification_loop(application.bot))
         print("[OK] Notification loop started")
+        
+        # Запускаємо перевірку термінів дії опитувань
+        async def check_expired_polls():
+            """Періодична перевірка та закриття опитувань з закінченим терміном"""
+            from poll_manager import get_poll_manager
+            poll_manager = get_poll_manager()
+            
+            while True:
+                try:
+                    await asyncio.sleep(300)  # Перевіряємо кожні 5 хвилин
+                    closed_count = poll_manager.check_and_close_expired_polls()
+                    if closed_count > 0:
+                        logger.log_info(f"Автоматично закрито {closed_count} опитувань з закінченим терміном")
+                except Exception as e:
+                    logger.log_error(f"Помилка перевірки термінів опитувань: {e}")
+        
+        asyncio.create_task(check_expired_polls())
+        print("[OK] Expired polls checker started")
+        
+        # Запускаємо перевірку термінів дії опитувань
+        async def check_expired_polls():
+            """Періодична перевірка та закриття опитувань з закінченим терміном"""
+            from poll_manager import get_poll_manager
+            import asyncio
+            poll_manager = get_poll_manager()
+            
+            while True:
+                try:
+                    await asyncio.sleep(300)  # Перевіряємо кожні 5 хвилин
+                    closed_count = poll_manager.check_and_close_expired_polls()
+                    if closed_count > 0:
+                        logger.log_info(f"Автоматично закрито {closed_count} опитувань з закінченим терміном")
+                except Exception as e:
+                    logger.log_error(f"Помилка перевірки термінів опитувань: {e}")
+        
+        asyncio.create_task(check_expired_polls())
+        print("[OK] Expired polls checker started")
+        
+        # Запускаємо перевірку термінів дії опитувань
+        async def check_expired_polls():
+            """Періодична перевірка та закриття опитувань з закінченим терміном"""
+            from poll_manager import get_poll_manager
+            import asyncio
+            poll_manager = get_poll_manager()
+            
+            while True:
+                try:
+                    await asyncio.sleep(300)  # Перевіряємо кожні 5 хвилин
+                    closed_count = poll_manager.check_and_close_expired_polls()
+                    if closed_count > 0:
+                        logger.log_info(f"Автоматично закрито {closed_count} опитувань з закінченим терміном")
+                except Exception as e:
+                    logger.log_error(f"Помилка перевірки термінів опитувань: {e}")
+        
+        asyncio.create_task(check_expired_polls())
+        print("[OK] Expired polls checker started")
     
     application.post_init = post_init
     

@@ -22,9 +22,12 @@ from database import init_database, get_session
 from models import (
     User, PendingRequest, ScheduleEntry, ScheduleMetadata,
     AcademicPeriod, Announcement, AnnouncementRecipient,
-    NotificationHistory, NotificationSettings, Log, BotConfig, Group
+    NotificationHistory, NotificationSettings, Log, BotConfig, Group,
+    Poll, PollOption, PollResponse
 )
 from air_alert import get_air_alert_manager
+from poll_manager import get_poll_manager
+from poll_manager import get_poll_manager
 
 # Завантажуємо змінні середовища
 load_dotenv("config.env")
@@ -1102,6 +1105,258 @@ def announcement_recipients(ann_id):
     except Exception as e:
         flash(f'Помилка завантаження отримувачів: {e}', 'danger')
         return redirect(url_for('announcements'))
+
+
+@app.route('/polls')
+@admin_required
+def polls():
+    """Управління опитуваннями"""
+    try:
+        poll_manager = get_poll_manager()
+        active_polls = poll_manager.get_active_polls()
+        
+        # Отримуємо закриті опитування
+        with get_session() as session:
+            closed_polls = session.query(Poll).filter(
+                Poll.is_closed == True
+            ).order_by(Poll.closed_at.desc()).limit(50).all()
+            
+            closed_polls_data = []
+            for poll in closed_polls:
+                author = session.query(User).filter(User.user_id == poll.author_id).first()
+                author_name = author.full_name if author and author.full_name else poll.author_username or f"ID: {poll.author_id}"
+                
+                response_count = session.query(PollResponse).filter(
+                    PollResponse.poll_id == poll.id
+                ).count()
+                
+                closed_polls_data.append({
+                    'id': poll.id,
+                    'question': poll.question,
+                    'author_name': author_name,
+                    'created_at': poll.created_at,
+                    'closed_at': poll.closed_at,
+                    'response_count': response_count,
+                    'report_sent': poll.report_sent,
+                    'is_anonymous': poll.is_anonymous
+                })
+        
+        # Отримуємо список всіх користувачів для вибору отримувачів
+        all_users = session.query(User).filter(User.role == 'user').order_by(User.full_name, User.username).all()
+        
+        return render_template('polls.html', active_polls=active_polls, closed_polls=closed_polls_data, all_users=all_users)
+    except Exception as e:
+        flash(f'Помилка завантаження опитувань: {e}', 'danger')
+        return render_template('polls.html', active_polls=[], closed_polls=[])
+
+
+@app.route('/polls/create', methods=['POST'])
+@admin_required
+def create_poll():
+    """Створення нового опитування"""
+    try:
+        question = request.form.get('question', '').strip()
+        options_text = request.form.get('options', '').strip()
+        expires_at_str = request.form.get('expires_at', '').strip()
+        is_anonymous = request.form.get('is_anonymous') == '1'
+        
+        if not question:
+            flash('Питання опитування не може бути порожнім!', 'warning')
+            return redirect(url_for('polls'))
+        
+        # Парсимо варіанти відповіді (кожен з нового рядка)
+        options = [opt.strip() for opt in options_text.split('\n') if opt.strip()]
+        
+        if len(options) < 2:
+            flash('Потрібно мінімум 2 варіанти відповіді!', 'warning')
+            return redirect(url_for('polls'))
+        
+        if len(options) > 10:
+            flash('Максимум 10 варіантів відповіді!', 'warning')
+            return redirect(url_for('polls'))
+        
+        # Парсимо термін дії
+        expires_at = None
+        if expires_at_str:
+            try:
+                expires_at = datetime.strptime(expires_at_str, '%Y-%m-%dT%H:%M')
+            except ValueError:
+                try:
+                    expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M')
+                except ValueError:
+                    flash('Невірний формат дати терміну дії!', 'warning')
+                    return redirect(url_for('polls'))
+        
+        poll_manager = get_poll_manager()
+        # Автор завжди адмін (з веб-інтерфейсу)
+        author_name = current_user.full_name or current_user._username or "Адміністратор"
+        poll_id = poll_manager.create_poll(
+            question=question,
+            options=options,
+            author_id=current_user.user_id,
+            author_username=author_name,
+            expires_at=expires_at,
+            is_anonymous=is_anonymous
+        )
+        
+        if poll_id:
+            flash(f'Опитування створено! ID: {poll_id}', 'success')
+        else:
+            flash('Помилка створення опитування!', 'danger')
+    except Exception as e:
+        flash(f'Помилка створення опитування: {e}', 'danger')
+    
+    return redirect(url_for('polls'))
+
+
+@app.route('/polls/<int:poll_id>/results')
+@admin_required
+def poll_results(poll_id):
+    """Результати опитування"""
+    try:
+        poll_manager = get_poll_manager()
+        results = poll_manager.get_poll_results(poll_id)
+        
+        if not results:
+            flash('Опитування не знайдено!', 'warning')
+            return redirect(url_for('polls'))
+        
+        # Отримуємо інформацію про опитування (для перевірки is_anonymous)
+        with get_session() as session:
+            poll = session.query(Poll).filter(Poll.id == poll_id).first()
+            is_anonymous = poll.is_anonymous if poll else False
+            
+            # Отримуємо відповіді користувачів
+            responses = session.query(PollResponse, User, PollOption).join(
+                User, PollResponse.user_id == User.user_id
+            ).join(
+                PollOption, PollResponse.option_id == PollOption.id
+            ).filter(
+                PollResponse.poll_id == poll_id
+            ).order_by(PollResponse.responded_at.desc()).all()
+            
+            user_responses = []
+            for response, user, option in responses:
+                user_responses.append({
+                    'user_id': user.user_id,
+                    'username': user.username or f"user_{user.user_id}",
+                    'full_name': user.full_name,
+                    'option_text': option.option_text,
+                    'response_time': response.responded_at
+                })
+        
+        results['is_anonymous'] = is_anonymous
+        results['user_responses'] = user_responses
+        
+        return render_template('poll_results.html', results=results)
+    except Exception as e:
+        flash(f'Помилка завантаження результатів: {e}', 'danger')
+        return redirect(url_for('polls'))
+
+
+@app.route('/polls/<int:poll_id>/send', methods=['POST'])
+@admin_required
+def send_poll(poll_id):
+    """Відправка опитування користувачам з кнопками для голосування"""
+    try:
+        send_to_all = request.form.get('send_to_all') == '1'
+        recipient_ids = request.form.getlist('recipient_ids')
+        
+        # Валідація
+        if not send_to_all and not recipient_ids:
+            flash('Оберіть отримувачів або встановіть "Відправити всім"!', 'warning')
+            return redirect(url_for('polls'))
+        
+        poll_manager = get_poll_manager()
+        
+        # Визначаємо список отримувачів
+        user_ids = None if send_to_all else [int(uid) for uid in recipient_ids]
+        
+        # Відправляємо опитування
+        send_stats = poll_manager.send_poll_to_users(poll_id, user_ids=user_ids)
+        
+        if send_to_all:
+            flash(
+                f'Опитування відправлено всім користувачам ({send_stats["sent"]} успішно). '
+                f'Помилок: {send_stats["failed"]}',
+                'success'
+            )
+        else:
+            flash(
+                f'Опитування відправлено {send_stats["sent"]} обраним користувачам. '
+                f'Помилок: {send_stats["failed"]}',
+                'success'
+            )
+    except Exception as e:
+        flash(f'Помилка відправки опитування: {e}', 'danger')
+    
+    return redirect(url_for('polls'))
+
+
+@app.route('/polls/<int:poll_id>/close', methods=['POST'])
+@admin_required
+def close_poll(poll_id):
+    """Закриття опитування та опціональна відправка звіту"""
+    try:
+        send_report = request.form.get('send_report') == '1'
+        poll_manager = get_poll_manager()
+        
+        # Закриваємо опитування
+        if not poll_manager.close_poll(poll_id):
+            flash('Помилка закриття опитування!', 'danger')
+            return redirect(url_for('polls'))
+        
+        # Відправляємо звіт тільки якщо встановлено
+        if send_report:
+            report_stats = poll_manager.send_poll_report_to_users(poll_id)
+            flash(
+                f'Опитування закрито! Звіт відправлено {report_stats["sent"]} користувачам. '
+                f'Помилок: {report_stats["failed"]}',
+                'success'
+            )
+        else:
+            flash('Опитування закрито без відправки звіту.', 'success')
+    except Exception as e:
+        flash(f'Помилка закриття опитування: {e}', 'danger')
+    
+    return redirect(url_for('polls'))
+
+
+@app.route('/polls/<int:poll_id>/delete', methods=['POST'])
+@admin_required
+def delete_poll(poll_id):
+    """Видалення закритого опитування з бази даних"""
+    try:
+        with get_session() as session:
+            poll = session.query(Poll).filter(Poll.id == poll_id).first()
+            
+            if not poll:
+                flash('Опитування не знайдено!', 'warning')
+                return redirect(url_for('polls'))
+            
+            # Перевіряємо, що опитування закрите
+            if not poll.is_closed:
+                flash('Можна видаляти тільки закриті опитування!', 'warning')
+                return redirect(url_for('polls'))
+            
+            # Отримуємо кількість відповідей для інформації
+            response_count = session.query(PollResponse).filter(
+                PollResponse.poll_id == poll_id
+            ).count()
+            
+            # Видаляємо опитування (CASCADE автоматично видалить PollOption та PollResponse)
+            session.delete(poll)
+            session.commit()
+            
+            flash(
+                f'Опитування "{poll.question[:50]}..." успішно видалено! '
+                f'Видалено {response_count} відповідей користувачів.',
+                'success'
+            )
+    except Exception as e:
+        flash(f'Помилка видалення опитування: {e}', 'danger')
+    
+    return redirect(url_for('polls'))
 
 
 @app.route('/academic')

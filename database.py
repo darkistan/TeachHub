@@ -90,6 +90,7 @@ class DatabaseManager:
             self.migrate_add_password_hash()
             self.migrate_create_groups_table()
             self.migrate_add_group_id_to_schedule()
+            self.migrate_add_poll_fields()
             
             # Видаляємо загальні записи без teacher_user_id
             self.migrate_remove_orphaned_entries()
@@ -287,6 +288,34 @@ class DatabaseManager:
                         logger.log_info("Додано колонку group_id до schedule_entries")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання group_id: {e}")
+    
+    def migrate_add_poll_fields(self):
+        """Міграція: додавання полів expires_at та sent_to_users до таблиці polls"""
+        try:
+            from sqlalchemy import text, inspect
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                if 'polls' in inspector.get_table_names():
+                    columns = [col['name'] for col in inspector.get_columns('polls')]
+                    
+                    if 'expires_at' not in columns:
+                        conn.execute(text("ALTER TABLE polls ADD COLUMN expires_at DATETIME"))
+                        logger.log_info("Додано колонку expires_at до polls")
+                    
+                    if 'sent_to_users' not in columns:
+                        conn.execute(text("ALTER TABLE polls ADD COLUMN sent_to_users BOOLEAN DEFAULT 0"))
+                        logger.log_info("Додано колонку sent_to_users до polls")
+                    
+                    if 'is_anonymous' not in columns:
+                        conn.execute(text("ALTER TABLE polls ADD COLUMN is_anonymous BOOLEAN DEFAULT 0"))
+                        logger.log_info("Додано колонку is_anonymous до polls")
+                    
+                    if 'recipient_user_ids' not in columns:
+                        conn.execute(text("ALTER TABLE polls ADD COLUMN recipient_user_ids TEXT"))
+                        logger.log_info("Додано колонку recipient_user_ids до polls")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання полів опитування: {e}")
     
     def drop_all_tables(self):
         """Видалення всіх таблиць (використовувати обережно!)"""

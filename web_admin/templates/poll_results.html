@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Результати опитування - TeachHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-bar-chart"></i> Результати опитування</h1>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{url_for('polls')}}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Назад до опитувань
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            ❓ {{results.question}}
+            {% if results.is_anonymous %}
+            <span class="badge bg-secondary"><i class="bi bi-shield-lock"></i> Анонімне</span>
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="mb-3">
+            <p class="text-muted mb-1">
+                <strong>Автор:</strong> {{results.author_name}}<br>
+                <strong>Створено:</strong> {{results.created_at.strftime('%d.%m.%Y %H:%M')}}<br>
+                {% if results.closed_at %}
+                <strong>Закрито:</strong> {{results.closed_at.strftime('%d.%m.%Y %H:%M')}}<br>
+                {% endif %}
+                <strong>Всього голосів:</strong> <span class="badge bg-primary">{{results.total_votes}}</span>
+            </p>
+        </div>
+        
+        <hr>
+        
+        <h5 class="mb-3">📊 Результати:</h5>
+        
+        {% if results.results %}
+        {% for result in results.results %}
+        <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong>{{result.option_text}}</strong>
+                <span class="badge bg-info">{{result.votes}} голосів ({{result.percentage}}%)</span>
+            </div>
+            <div class="progress" style="height: 30px;">
+                <div class="progress-bar" role="progressbar" style="width: {{result.percentage}}%" aria-valuenow="{{result.percentage}}" aria-valuemin="0" aria-valuemax="100">
+                    {{result.percentage}}%
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> Поки що немає відповідей на це опитування.
+        </div>
+        {% endif %}
+        
+        {% if not results.is_closed %}
+        <hr>
+        <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#closePollModal{{results.poll_id}}">
+            <i class="bi bi-lock"></i> Закрити опитування
+        </button>
+        
+        <!-- Modal для закриття опитування -->
+        <div class="modal fade" id="closePollModal{{results.poll_id}}" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-lock"></i> Закрити опитування</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form method="POST" action="{{url_for('close_poll', poll_id=results.poll_id)}}">
+                        <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="send_report" id="send_report{{results.poll_id}}" value="1" checked>
+                                    <label class="form-check-label" for="send_report{{results.poll_id}}">
+                                        <i class="bi bi-send"></i> Відправити звіт з результатами отримувачам опитування
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">Якщо не встановлено, опитування буде закрито без відправки звіту</small>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                            <button type="submit" class="btn btn-warning">
+                                <i class="bi bi-lock"></i> Закрити опитування
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if results.user_responses %}
+        <hr>
+        <h5 class="mb-3">
+            <i class="bi bi-people"></i> Відповіді користувачів
+            {% if results.is_anonymous %}
+            <span class="badge bg-secondary">Анонімне опитування</span>
+            {% endif %}
+        </h5>
+        
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Користувач</th>
+                        <th>Відповідь</th>
+                        <th>Час відповіді</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for response in results.user_responses %}
+                    <tr>
+                        <td>
+                            {% if response.full_name %}
+                            <strong>{{response.full_name}}</strong><br>
+                            <small class="text-muted">@{{response.username}}</small>
+                            {% else %}
+                            <strong>@{{response.username}}</strong>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-primary">{{response.option_text}}</span>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{response.response_time.strftime('%d.%m.%Y %H:%M:%S')}}</small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
