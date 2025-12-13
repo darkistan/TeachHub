@@ -4,6 +4,7 @@ Flask веб-інтерфейс для управління TeachHub
 """
 import os
 import sys
+import uuid
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -650,6 +651,83 @@ def delete_schedule_entry(entry_id):
     return redirect(url_for('schedule'))
 
 
+@app.route('/schedule/copy', methods=['POST'])
+@admin_required
+def copy_schedule():
+    """Копіювання розкладу від одного викладача до іншого"""
+    try:
+        from_teacher_id = request.form.get('from_teacher_id', type=int)
+        to_teacher_id = request.form.get('to_teacher_id', type=int)
+        replace_existing = request.form.get('replace_existing') == 'on'  # Чи замінювати існуючі записи
+        
+        if not from_teacher_id or not to_teacher_id:
+            flash('Виберіть вихідного та цільового викладача!', 'warning')
+            return redirect(url_for('schedule'))
+        
+        if from_teacher_id == to_teacher_id:
+            flash('Вихідний та цільовий викладач не можуть бути однаковими!', 'warning')
+            return redirect(url_for('schedule'))
+        
+        with get_session() as session:
+            # Перевіряємо існування користувачів
+            from_teacher = session.query(User).filter(User.user_id == from_teacher_id).first()
+            to_teacher = session.query(User).filter(User.user_id == to_teacher_id).first()
+            
+            if not from_teacher or not to_teacher:
+                flash('Одного з викладачів не знайдено!', 'danger')
+                return redirect(url_for('schedule'))
+            
+            # Отримуємо ПІБ цільового викладача
+            to_teacher_name = to_teacher.full_name if to_teacher.full_name else to_teacher.username or f"ID: {to_teacher_id}"
+            
+            # Отримуємо всі записи розкладу від вихідного викладача
+            source_entries = session.query(ScheduleEntry).filter(
+                ScheduleEntry.teacher_user_id == from_teacher_id
+            ).all()
+            
+            if not source_entries:
+                flash(f'У викладача {from_teacher.full_name or from_teacher.username} немає записів розкладу для копіювання!', 'warning')
+                return redirect(url_for('schedule'))
+            
+            # Якщо replace_existing, видаляємо існуючі записи цільового викладача
+            if replace_existing:
+                existing_entries = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == to_teacher_id
+                ).all()
+                for entry in existing_entries:
+                    session.delete(entry)
+            
+            # Копіюємо записи
+            copied_count = 0
+            for source_entry in source_entries:
+                new_entry = ScheduleEntry(
+                    day_of_week=source_entry.day_of_week,
+                    time=source_entry.time,
+                    subject=source_entry.subject,
+                    lesson_type=source_entry.lesson_type,
+                    teacher=to_teacher_name,  # Оновлюємо ПІБ викладача
+                    teacher_user_id=to_teacher_id,
+                    teacher_phone=source_entry.teacher_phone,
+                    classroom=source_entry.classroom,
+                    conference_link=source_entry.conference_link,
+                    exam_type=source_entry.exam_type,
+                    week_type=source_entry.week_type,
+                    group_id=source_entry.group_id  # Група залишається та сама
+                )
+                session.add(new_entry)
+                copied_count += 1
+            
+            session.commit()
+            
+            from_name = from_teacher.full_name or from_teacher.username or f"ID: {from_teacher_id}"
+            to_name = to_teacher.full_name or to_teacher.username or f"ID: {to_teacher_id}"
+            flash(f'Розклад скопійовано від {from_name} до {to_name}! Скопійовано записів: {copied_count}', 'success')
+    except Exception as e:
+        flash(f'Помилка копіювання розкладу: {e}', 'danger')
+    
+    return redirect(url_for('schedule'))
+
+
 @app.route('/logs')
 @admin_required
 def logs():
@@ -1201,6 +1279,79 @@ def delete_academic_period(period_id):
                 flash('Період не знайдено!', 'warning')
     except Exception as e:
         flash(f'Помилка видалення періоду: {e}', 'danger')
+    
+    return redirect(url_for('academic'))
+
+
+@app.route('/academic/copy', methods=['POST'])
+@admin_required
+def copy_academic_calendar():
+    """Копіювання академічного календаря від одного викладача до іншого"""
+    try:
+        from_teacher_id = request.form.get('from_teacher_id', type=int)
+        to_teacher_id = request.form.get('to_teacher_id', type=int)
+        replace_existing = request.form.get('replace_existing') == 'on'  # Чи замінювати існуючі записи
+        
+        if not from_teacher_id or not to_teacher_id:
+            flash('Виберіть вихідного та цільового викладача!', 'warning')
+            return redirect(url_for('academic'))
+        
+        if from_teacher_id == to_teacher_id:
+            flash('Вихідний та цільовий викладач не можуть бути однаковими!', 'warning')
+            return redirect(url_for('academic'))
+        
+        with get_session() as session:
+            # Перевіряємо існування користувачів
+            from_teacher = session.query(User).filter(User.user_id == from_teacher_id).first()
+            to_teacher = session.query(User).filter(User.user_id == to_teacher_id).first()
+            
+            if not from_teacher or not to_teacher:
+                flash('Одного з викладачів не знайдено!', 'danger')
+                return redirect(url_for('academic'))
+            
+            # Отримуємо всі періоди від вихідного викладача
+            source_periods = session.query(AcademicPeriod).filter(
+                AcademicPeriod.teacher_user_id == from_teacher_id
+            ).all()
+            
+            if not source_periods:
+                flash(f'У викладача {from_teacher.full_name or from_teacher.username} немає періодів для копіювання!', 'warning')
+                return redirect(url_for('academic'))
+            
+            # Якщо replace_existing, видаляємо існуючі періоди цільового викладача
+            if replace_existing:
+                existing_periods = session.query(AcademicPeriod).filter(
+                    AcademicPeriod.teacher_user_id == to_teacher_id
+                ).all()
+                for period in existing_periods:
+                    session.delete(period)
+            
+            # Копіюємо періоди
+            copied_count = 0
+            for source_period in source_periods:
+                # Генеруємо унікальний period_id для нового періоду
+                new_period_id = f"{to_teacher_id}_{uuid.uuid4().hex[:8]}"
+                
+                new_period = AcademicPeriod(
+                    period_id=new_period_id,
+                    name=source_period.name,
+                    start_date=source_period.start_date,
+                    end_date=source_period.end_date,
+                    weeks=source_period.weeks,
+                    color=source_period.color,
+                    description=source_period.description,
+                    teacher_user_id=to_teacher_id
+                )
+                session.add(new_period)
+                copied_count += 1
+            
+            session.commit()
+            
+            from_name = from_teacher.full_name or from_teacher.username or f"ID: {from_teacher_id}"
+            to_name = to_teacher.full_name or to_teacher.username or f"ID: {to_teacher_id}"
+            flash(f'Академічний календар скопійовано від {from_name} до {to_name}! Скопійовано періодів: {copied_count}', 'success')
+    except Exception as e:
+        flash(f'Помилка копіювання академічного календаря: {e}', 'danger')
     
     return redirect(url_for('academic'))
 

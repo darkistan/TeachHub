@@ -27,9 +27,16 @@
                 {% endfor %}
             </select>
         </div>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addLessonModal">
-            <i class="bi bi-plus-circle"></i> Додати заняття
-        </button>
+        <div>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addLessonModal">
+                <i class="bi bi-plus-circle"></i> Додати заняття
+            </button>
+            {% if current_user.is_admin %}
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#copyScheduleModal">
+                <i class="bi bi-files"></i> Копіювати розклад
+            </button>
+            {% endif %}
+        </div>
     </div>
 </div>
 
@@ -186,7 +193,7 @@
                 <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Додати заняття</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{url_for('add_schedule_entry')}}">
+            <form method="POST" action="{{url_for('add_schedule_entry')}}" id="addLessonForm" onsubmit="return validateTimeInput('add')">
                 <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
                 <div class="modal-body">
                     <div class="row">
@@ -198,17 +205,40 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Час</label>
-                            <input type="text" class="form-control" name="time" placeholder="08:30-09:50" required>
-                        </div>
-                        <div class="col-md-3 mb-3">
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">Тип тижня</label>
                             <select class="form-select" name="week_type" required>
                                 <option value="numerator">Чисельник</option>
                                 <option value="denominator">Знаменник</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Час заняття</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Початок</label>
+                                <input type="time" class="form-control" id="add_time_start" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Кінець</label>
+                                <input type="time" class="form-control" id="add_time_end" required>
+                            </div>
+                        </div>
+                        <input type="hidden" name="time" id="add_time_combined" required>
+                        <small class="form-text text-muted">Або виберіть зі списку:</small>
+                        <select class="form-select mt-2" id="add_time_preset" onchange="setTimeFromPreset('add')">
+                            <option value="">-- Виберіть час --</option>
+                            <option value="08:30-09:50">08:30-09:50 (1 пара)</option>
+                            <option value="10:00-11:20">10:00-11:20 (2 пара)</option>
+                            <option value="12:00-13:20">12:00-13:20 (3 пара, після обіду)</option>
+                            <option value="13:30-14:50">13:30-14:50 (4 пара)</option>
+                            <option value="13:30-14:00">13:30-14:00 (Година спілкування)</option>
+                            <option value="15:00-16:20">15:00-16:20 (5 пара)</option>
+                            <option value="16:30-17:50">16:30-17:50 (6 пара)</option>
+                            <option value="18:00-19:20">18:00-19:20 (7 пара)</option>
+                            <option value="19:30-20:50">19:30-20:50 (8 пара)</option>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Предмет</label>
@@ -296,7 +326,7 @@
                 <h5 class="modal-title"><i class="bi bi-pencil"></i> Редагувати заняття</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" id="editLessonForm">
+            <form method="POST" id="editLessonForm" onsubmit="return validateTimeInput('edit')">
                 <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
                 <div class="modal-body">
                     <div class="row">
@@ -308,17 +338,40 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-3 mb-3">
-                            <label class="form-label">Час</label>
-                            <input type="text" class="form-control" name="time" id="edit_time" required>
-                        </div>
-                        <div class="col-md-3 mb-3">
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">Тип тижня</label>
                             <select class="form-select" name="week_type" id="edit_week_type" required>
                                 <option value="numerator">Чисельник</option>
                                 <option value="denominator">Знаменник</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Час заняття</label>
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Початок</label>
+                                <input type="time" class="form-control" id="edit_time_start" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted">Кінець</label>
+                                <input type="time" class="form-control" id="edit_time_end" required>
+                            </div>
+                        </div>
+                        <input type="hidden" name="time" id="edit_time_combined" required>
+                        <small class="form-text text-muted">Або виберіть зі списку:</small>
+                        <select class="form-select mt-2" id="edit_time_preset" onchange="setTimeFromPreset('edit')">
+                            <option value="">-- Виберіть час --</option>
+                            <option value="08:30-09:50">08:30-09:50 (1 пара)</option>
+                            <option value="10:00-11:20">10:00-11:20 (2 пара)</option>
+                            <option value="12:00-13:20">12:00-13:20 (3 пара, після обіду)</option>
+                            <option value="13:30-14:50">13:30-14:50 (4 пара)</option>
+                            <option value="13:30-14:00">13:30-14:00 (Година спілкування)</option>
+                            <option value="15:00-16:20">15:00-16:20 (5 пара)</option>
+                            <option value="16:30-17:50">16:30-17:50 (6 пара)</option>
+                            <option value="18:00-19:20">18:00-19:20 (7 пара)</option>
+                            <option value="19:30-20:50">19:30-20:50 (8 пара)</option>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Предмет</label>
@@ -392,6 +445,71 @@
     </div>
 </div>
 
+<!-- Modal для копіювання розкладу -->
+{% if current_user.is_admin %}
+<div class="modal fade" id="copyScheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-files"></i> Копіювати розклад</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{url_for('copy_schedule')}}">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Від викладача (джерело):</label>
+                        <select class="form-select" name="from_teacher_id" required>
+                            <option value="">Виберіть викладача</option>
+                            {% for teacher in teachers %}
+                            <option value="{{teacher.user_id}}">
+                                {% if teacher.full_name %}
+                                    {{teacher.full_name}} (@{{teacher.username}})
+                                {% else %}
+                                    @{{teacher.username}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">До викладача (призначення):</label>
+                        <select class="form-select" name="to_teacher_id" required>
+                            <option value="">Виберіть викладача</option>
+                            {% for teacher in teachers %}
+                            <option value="{{teacher.user_id}}">
+                                {% if teacher.full_name %}
+                                    {{teacher.full_name}} (@{{teacher.username}})
+                                {% else %}
+                                    @{{teacher.username}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="replace_existing" id="replaceSchedule">
+                            <label class="form-check-label" for="replaceSchedule">
+                                Замінити існуючий розклад цільового викладача
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">Якщо не встановлено, записи будуть додані до існуючого розкладу</small>
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> Увага! Буде скопійовано всі заняття від вихідного викладача до цільового.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-success">Копіювати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <script>
 // Дані про викладачів для JavaScript
 const teachers = {
@@ -441,10 +559,87 @@ document.getElementById('edit_teacher_user_id')?.addEventListener('change', func
     }
 });
 
+// Функція для об'єднання двох time picker'ів в формат "HH:MM-HH:MM"
+function combineTimeInputs(prefix) {
+    const start = document.getElementById(prefix + '_time_start').value;
+    const end = document.getElementById(prefix + '_time_end').value;
+    if (start && end) {
+        document.getElementById(prefix + '_time_combined').value = start + '-' + end;
+        // Скидаємо preset, якщо час введено вручну
+        document.getElementById(prefix + '_time_preset').value = '';
+    }
+}
+
+// Функція для встановлення часу з preset dropdown
+function setTimeFromPreset(prefix) {
+    const preset = document.getElementById(prefix + '_time_preset').value;
+    if (preset) {
+        const [start, end] = preset.split('-');
+        document.getElementById(prefix + '_time_start').value = start;
+        document.getElementById(prefix + '_time_end').value = end;
+        document.getElementById(prefix + '_time_combined').value = preset;
+    }
+}
+
+// Функція для парсингу часу формату "HH:MM-HH:MM" в два time picker'и
+function parseTimeToInputs(prefix, timeStr) {
+    if (timeStr && timeStr.includes('-')) {
+        const [start, end] = timeStr.split('-');
+        document.getElementById(prefix + '_time_start').value = start;
+        document.getElementById(prefix + '_time_end').value = end;
+        document.getElementById(prefix + '_time_combined').value = timeStr;
+        // Встановлюємо preset, якщо він відповідає
+        const preset = document.getElementById(prefix + '_time_preset');
+        for (let option of preset.options) {
+            if (option.value === timeStr) {
+                preset.value = timeStr;
+                break;
+            }
+        }
+    }
+}
+
+// Функція для валідації часу перед відправкою форми
+function validateTimeInput(prefix) {
+    const start = document.getElementById(prefix + '_time_start').value;
+    const end = document.getElementById(prefix + '_time_end').value;
+    const combined = document.getElementById(prefix + '_time_combined');
+    
+    if (!start || !end) {
+        alert('Будь ласка, введіть час початку та кінця заняття!');
+        return false;
+    }
+    
+    if (start >= end) {
+        alert('Час початку повинен бути раніше за час кінця!');
+        return false;
+    }
+    
+    // Об'єднуємо час перед відправкою
+    combined.value = start + '-' + end;
+    return true;
+}
+
+// Додаємо обробники подій для time picker'ів додавання
+document.getElementById('add_time_start')?.addEventListener('change', function() {
+    combineTimeInputs('add');
+});
+document.getElementById('add_time_end')?.addEventListener('change', function() {
+    combineTimeInputs('add');
+});
+
+// Додаємо обробники подій для time picker'ів редагування
+document.getElementById('edit_time_start')?.addEventListener('change', function() {
+    combineTimeInputs('edit');
+});
+document.getElementById('edit_time_end')?.addEventListener('change', function() {
+    combineTimeInputs('edit');
+});
+
 function editLesson(id, day, time, subject, type, teacherUserId, phone, classroom, meet, exam, week, groupId) {
     document.getElementById('editLessonForm').action = '/schedule/edit/' + id;
     document.getElementById('edit_day').value = day;
-    document.getElementById('edit_time').value = time;
+    parseTimeToInputs('edit', time); // Парсимо час в time picker'и
     document.getElementById('edit_subject').value = subject;
     document.getElementById('edit_lesson_type').value = type;
     document.getElementById('edit_teacher_user_id').value = teacherUserId || '';

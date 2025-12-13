@@ -13,6 +13,11 @@
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPeriodModal">
             <i class="bi bi-plus-circle"></i> Додати період
         </button>
+        {% if current_user.is_admin %}
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#copyAcademicModal">
+            <i class="bi bi-files"></i> Копіювати календар
+        </button>
+        {% endif %}
     </div>
 </div>
 
@@ -293,6 +298,71 @@
         </div>
     </div>
 </div>
+
+<!-- Modal для копіювання академічного календаря -->
+{% if current_user.is_admin %}
+<div class="modal fade" id="copyAcademicModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-files"></i> Копіювати академічний календар</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{url_for('copy_academic_calendar')}}">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Від викладача (джерело):</label>
+                        <select class="form-select" name="from_teacher_id" required>
+                            <option value="">Виберіть викладача</option>
+                            {% for teacher in teachers %}
+                            <option value="{{teacher.user_id}}">
+                                {% if teacher.full_name %}
+                                    {{teacher.full_name}} (@{{teacher.username}})
+                                {% else %}
+                                    @{{teacher.username}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">До викладача (призначення):</label>
+                        <select class="form-select" name="to_teacher_id" required>
+                            <option value="">Виберіть викладача</option>
+                            {% for teacher in teachers %}
+                            <option value="{{teacher.user_id}}">
+                                {% if teacher.full_name %}
+                                    {{teacher.full_name}} (@{{teacher.username}})
+                                {% else %}
+                                    @{{teacher.username}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="replace_existing" id="replaceAcademic">
+                            <label class="form-check-label" for="replaceAcademic">
+                                Замінити існуючий календар цільового викладача
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">Якщо не встановлено, періоди будуть додані до існуючого календаря</small>
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> Увага! Буде скопійовано всі періоди від вихідного викладача до цільового.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-success">Копіювати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <script>
 function editPeriod(id, period_id, name, start, end, weeks, color, description, teacher_user_id) {
