@@ -120,7 +120,9 @@ class NotificationManager:
             
             subject = lesson.get("subject", "Невідомо")
             lesson_time = lesson.get("time", "Невідомо")
-            teacher = lesson.get("teacher", "Невідомо")
+            group_name = lesson.get("group_name", "не вказана")
+            headman_name = lesson.get("headman_name")
+            headman_phone = lesson.get("headman_phone")
             lesson_type = lesson.get("type", "лекція")
             meet_link = lesson.get("conference_link", "")
             
@@ -142,9 +144,20 @@ class NotificationManager:
                 "",
                 f"{type_emoji} <b>{subject}</b>",
                 f"🕐 {lesson_time}",
-                f"👨‍🏫 {teacher}",
-                ""
+                f"👥 Група: {group_name}",
             ]
+            
+            # Додаємо дані старости, якщо вони є
+            if headman_name or headman_phone:
+                headman_parts = []
+                if headman_name:
+                    headman_parts.append(headman_name)
+                if headman_phone:
+                    headman_parts.append(f"<code>{headman_phone}</code>")
+                if headman_parts:
+                    message_parts.append(f"👤 Староста: {' | '.join(headman_parts)}")
+            
+            message_parts.append("")
             
             if meet_link:
                 message_parts.append(f"💻 <a href='{meet_link}'>Приєднатися до Google Meet</a>")

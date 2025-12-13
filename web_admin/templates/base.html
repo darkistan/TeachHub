@@ -37,6 +37,11 @@
                     </li>
                     {% endif %}
                     <li class="nav-item">
+                        <a class="nav-link" href="{{url_for('groups')}}">
+                            <i class="bi bi-collection"></i> Групи
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="{{url_for('schedule')}}">
                             <i class="bi bi-calendar3"></i> Розклад
                         </a>
@@ -75,7 +80,7 @@
                     {% if current_user.is_authenticated %}
                     <!-- Інформація про користувача -->
                     <div class="me-3">
-                        <span class="badge bg-light text-dark">
+                        <span class="badge bg-light text-dark user-badge">
                             <i class="bi bi-person-circle"></i> 
                             {{ current_user.full_name }}
                             {% if current_user.is_admin %}

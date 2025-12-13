@@ -21,7 +21,7 @@ from database import init_database, get_session
 from models import (
     User, PendingRequest, ScheduleEntry, ScheduleMetadata,
     AcademicPeriod, Announcement, AnnouncementRecipient,
-    NotificationHistory, NotificationSettings, Log, BotConfig
+    NotificationHistory, NotificationSettings, Log, BotConfig, Group
 )
 from air_alert import get_air_alert_manager
 
@@ -498,8 +498,16 @@ def schedule():
                     'denominator': []
                 }
             
+            # Отримуємо список груп для вибору
+            groups = session.query(Group).order_by(Group.name).all()
+            
             # Створюємо словник викладачів для швидкого доступу
             teachers_dict = {t.user_id: t for t in teachers}
+            
+            # Створюємо словник груп для швидкого доступу
+            groups_dict = {}
+            if groups:
+                groups_dict = {g.id: g for g in groups}
             
             for entry in entries:
                 if entry.day_of_week in schedule_data:
@@ -509,6 +517,13 @@ def schedule():
                         entry.teacher_display = teacher.full_name if teacher.full_name else entry.teacher
                     else:
                         entry.teacher_display = entry.teacher
+                    
+                    # Додаємо інформацію про групу до entry
+                    if entry.group_id and entry.group_id in groups_dict:
+                        entry.group_name = groups_dict[entry.group_id].name
+                    else:
+                        entry.group_name = None
+                    
                     schedule_data[entry.day_of_week][entry.week_type].append(entry)
             
             return render_template('schedule.html',
@@ -517,19 +532,24 @@ def schedule():
                                  days_order=days_order,
                                  day_names=day_names,
                                  teachers=teachers,
+                                 groups=groups,
                                  selected_teacher_id=teacher_filter)
     except Exception as e:
         flash(f'Помилка завантаження розкладу: {e}', 'danger')
-        return render_template('schedule.html', schedule={}, metadata=None, days_order=[], day_names={}, teachers=[], selected_teacher_id=None)
+        return render_template('schedule.html', schedule={}, metadata=None, days_order=[], day_names={}, teachers=[], groups=[], selected_teacher_id=None)
 
 
 @app.route('/schedule/add', methods=['POST'])
-@admin_required
+@login_required
 def add_schedule_entry():
     """Додавання заняття"""
     try:
         with get_session() as session:
-            teacher_user_id = request.form.get('teacher_user_id', type=int)
+            # Для користувачів (не адмінів) автоматично встановлюємо їх user_id
+            if current_user.is_admin:
+                teacher_user_id = request.form.get('teacher_user_id', type=int)
+            else:
+                teacher_user_id = current_user.user_id
             
             # Отримуємо ПІБ викладача, якщо вказано teacher_user_id
             teacher_name = request.form.get('teacher', '')
@@ -537,6 +557,8 @@ def add_schedule_entry():
                 user = session.query(User).filter(User.user_id == teacher_user_id).first()
                 if user and getattr(user, 'full_name', None):
                     teacher_name = user.full_name
+            
+            group_id = request.form.get('group_id', type=int)
             
             entry = ScheduleEntry(
                 day_of_week=request.form['day_of_week'],
@@ -549,7 +571,8 @@ def add_schedule_entry():
                 classroom=request.form.get('classroom', ''),
                 conference_link=request.form.get('conference_link', ''),
                 exam_type=request.form.get('exam_type', 'залік'),
-                week_type=request.form['week_type']
+                week_type=request.form['week_type'],
+                group_id=group_id if group_id else None
             )
             session.add(entry)
             session.commit()
@@ -578,6 +601,8 @@ def edit_schedule_entry(entry_id):
                     if user and getattr(user, 'full_name', None):
                         teacher_name = user.full_name
                 
+                group_id = request.form.get('group_id', type=int)
+                
                 entry.day_of_week = request.form['day_of_week']
                 entry.time = request.form['time']
                 entry.subject = request.form['subject']
@@ -589,6 +614,7 @@ def edit_schedule_entry(entry_id):
                 entry.conference_link = request.form.get('conference_link', '')
                 entry.exam_type = request.form.get('exam_type', 'залік')
                 entry.week_type = request.form['week_type']
+                entry.group_id = group_id if group_id else None
                 session.commit()
                 
                 flash(f'Заняття "{entry.subject}" оновлено!', 'success')
@@ -601,13 +627,17 @@ def edit_schedule_entry(entry_id):
 
 
 @app.route('/schedule/delete/<int:entry_id>', methods=['POST'])
-@admin_required
+@login_required
 def delete_schedule_entry(entry_id):
     """Видалення заняття"""
     try:
         with get_session() as session:
             entry = session.query(ScheduleEntry).filter(ScheduleEntry.id == entry_id).first()
             if entry:
+                # Перевіряємо права доступу: користувач може видаляти тільки свої заняття
+                if not current_user.is_admin and entry.teacher_user_id != current_user.user_id:
+                    flash('У вас немає прав для видалення цього заняття!', 'danger')
+                    return redirect(url_for('schedule'))
                 subject = entry.subject
                 session.delete(entry)
                 session.commit()
@@ -1059,17 +1089,20 @@ def academic():
 
 
 @app.route('/academic/add', methods=['POST'])
-@admin_required
+@login_required
 def add_academic_period():
     """Додавання академічного періоду"""
     try:
         with get_session() as session:
-            teacher_user_id = request.form.get('teacher_user_id', type=int)
-            
-            # Перевіряємо, що викладач обов'язково вказаний
-            if not teacher_user_id:
-                flash('Помилка: необхідно вибрати викладача для періоду!', 'danger')
-                return redirect(url_for('academic'))
+            # Для користувачів (не адмінів) автоматично встановлюємо їх user_id
+            if current_user.is_admin:
+                teacher_user_id = request.form.get('teacher_user_id', type=int)
+                # Перевіряємо, що викладач обов'язково вказаний для адмінів
+                if not teacher_user_id:
+                    flash('Помилка: необхідно вибрати викладача для періоду!', 'danger')
+                    return redirect(url_for('academic'))
+            else:
+                teacher_user_id = current_user.user_id
             
             period = AcademicPeriod(
                 period_id=request.form['period_id'],
@@ -1096,22 +1129,30 @@ def add_academic_period():
 
 
 @app.route('/academic/edit/<int:period_id>', methods=['POST'])
-@admin_required
+@login_required
 def edit_academic_period(period_id):
     """Редагування періоду"""
     try:
         with get_session() as session:
             period = session.query(AcademicPeriod).filter(AcademicPeriod.id == period_id).first()
             if period:
-                teacher_user_id = request.form.get('teacher_user_id', type=int)
-                
-                # Перевіряємо, що викладач обов'язково вказаний
-                if not teacher_user_id:
-                    flash('Помилка: необхідно вибрати викладача для періоду!', 'danger')
-                    # Перенаправляємо з фільтром поточного періоду
-                    if period.teacher_user_id:
-                        return redirect(url_for('academic', teacher_id=period.teacher_user_id))
+                # Перевіряємо права доступу: користувач може редагувати тільки свої періоди
+                if not current_user.is_admin and period.teacher_user_id != current_user.user_id:
+                    flash('У вас немає прав для редагування цього періоду!', 'danger')
                     return redirect(url_for('academic'))
+                
+                # Для користувачів (не адмінів) автоматично встановлюємо їх user_id
+                if current_user.is_admin:
+                    teacher_user_id = request.form.get('teacher_user_id', type=int)
+                    # Перевіряємо, що викладач обов'язково вказаний для адмінів
+                    if not teacher_user_id:
+                        flash('Помилка: необхідно вибрати викладача для періоду!', 'danger')
+                        # Перенаправляємо з фільтром поточного періоду
+                        if period.teacher_user_id:
+                            return redirect(url_for('academic', teacher_id=period.teacher_user_id))
+                        return redirect(url_for('academic'))
+                else:
+                    teacher_user_id = current_user.user_id
                 
                 period.name = request.form['name']
                 period.start_date = request.form['start_date']
@@ -1136,13 +1177,17 @@ def edit_academic_period(period_id):
 
 
 @app.route('/academic/delete/<int:period_id>', methods=['POST'])
-@admin_required
+@login_required
 def delete_academic_period(period_id):
     """Видалення періоду"""
     try:
         with get_session() as session:
             period = session.query(AcademicPeriod).filter(AcademicPeriod.id == period_id).first()
             if period:
+                # Перевіряємо права доступу: користувач може видаляти тільки свої періоди
+                if not current_user.is_admin and period.teacher_user_id != current_user.user_id:
+                    flash('У вас немає прав для видалення цього періоду!', 'danger')
+                    return redirect(url_for('academic'))
                 teacher_id = period.teacher_user_id
                 name = period.name
                 session.delete(period)
@@ -1342,6 +1387,137 @@ def api_alert_status():
             'message': 'Статус недоступний',
             'error': str(e)
         })
+
+
+@app.route('/groups')
+@login_required
+def groups():
+    """Управління групами"""
+    try:
+        with get_session() as session:
+            all_groups = session.query(Group).all()
+            teachers = session.query(User).filter(User.role == 'user').all()
+            
+            # Додаємо інформацію про кураторів
+            groups_data = []
+            for group in all_groups:
+                curator = None
+                if group.curator_user_id:
+                    curator = session.query(User).filter(User.user_id == group.curator_user_id).first()
+                
+                groups_data.append({
+                    'id': group.id,
+                    'name': group.name,
+                    'headman_name': group.headman_name,
+                    'headman_phone': group.headman_phone,
+                    'curator_user_id': group.curator_user_id,
+                    'curator_display': curator.full_name if curator and curator.full_name else (curator.username if curator else 'Не встановлено'),
+                    'created_at': group.created_at,
+                    'updated_at': group.updated_at
+                })
+            
+            return render_template('groups.html',
+                                 groups=groups_data,
+                                 teachers=teachers)
+    except Exception as e:
+        flash(f'Помилка завантаження груп: {e}', 'danger')
+        return render_template('groups.html', groups=[], teachers=[])
+
+
+@app.route('/groups/add', methods=['POST'])
+@login_required
+def add_group():
+    """Додавання групи"""
+    try:
+        name = request.form.get('name', '').strip()
+        headman_name = request.form.get('headman_name', '').strip()
+        headman_phone = request.form.get('headman_phone', '').strip()
+        curator_user_id = request.form.get('curator_user_id', type=int)
+        
+        if not name:
+            flash('Назва групи обов\'язкова!', 'danger')
+            return redirect(url_for('groups'))
+        
+        with get_session() as session:
+            # Перевіряємо чи вже існує група з такою назвою
+            existing = session.query(Group).filter(Group.name == name).first()
+            if existing:
+                flash(f'Група "{name}" вже існує!', 'warning')
+                return redirect(url_for('groups'))
+            
+            group = Group(
+                name=name,
+                headman_name=headman_name if headman_name else None,
+                headman_phone=headman_phone if headman_phone else None,
+                curator_user_id=curator_user_id if curator_user_id else None
+            )
+            session.add(group)
+            session.commit()
+            
+            flash(f'Групу "{name}" додано!', 'success')
+    except Exception as e:
+        flash(f'Помилка додавання групи: {e}', 'danger')
+    
+    return redirect(url_for('groups'))
+
+
+@app.route('/groups/edit/<int:group_id>', methods=['POST'])
+@login_required
+def edit_group(group_id):
+    """Редагування групи"""
+    try:
+        name = request.form.get('name', '').strip()
+        headman_name = request.form.get('headman_name', '').strip()
+        headman_phone = request.form.get('headman_phone', '').strip()
+        curator_user_id = request.form.get('curator_user_id', type=int)
+        
+        if not name:
+            flash('Назва групи обов\'язкова!', 'danger')
+            return redirect(url_for('groups'))
+        
+        with get_session() as session:
+            group = session.query(Group).filter(Group.id == group_id).first()
+            if group:
+                # Перевіряємо чи не існує інша група з такою назвою
+                existing = session.query(Group).filter(Group.name == name, Group.id != group_id).first()
+                if existing:
+                    flash(f'Група "{name}" вже існує!', 'warning')
+                    return redirect(url_for('groups'))
+                
+                group.name = name
+                group.headman_name = headman_name if headman_name else None
+                group.headman_phone = headman_phone if headman_phone else None
+                group.curator_user_id = curator_user_id if curator_user_id else None
+                group.updated_at = datetime.now()
+                session.commit()
+                
+                flash(f'Групу "{name}" оновлено!', 'success')
+            else:
+                flash('Групу не знайдено!', 'warning')
+    except Exception as e:
+        flash(f'Помилка редагування групи: {e}', 'danger')
+    
+    return redirect(url_for('groups'))
+
+
+@app.route('/groups/delete/<int:group_id>', methods=['POST'])
+@login_required
+def delete_group(group_id):
+    """Видалення групи"""
+    try:
+        with get_session() as session:
+            group = session.query(Group).filter(Group.id == group_id).first()
+            if group:
+                name = group.name
+                session.delete(group)
+                session.commit()
+                flash(f'Групу "{name}" видалено!', 'success')
+            else:
+                flash('Групу не знайдено!', 'warning')
+    except Exception as e:
+        flash(f'Помилка видалення групи: {e}', 'danger')
+    
+    return redirect(url_for('groups'))
 
 
 # Запуск додатку

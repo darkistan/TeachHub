@@ -19,7 +19,9 @@ from input_validator import input_validator
 from air_alert import get_air_alert_manager
 from notification_manager import get_notification_manager
 from schedule_analyzer import ScheduleAnalyzer
-from database import init_database
+from database import init_database, get_session
+from models import ScheduleEntry
+from datetime import datetime
 
 # Завантажуємо змінні середовища
 load_dotenv("config.env")
@@ -388,11 +390,42 @@ async def show_current_day_schedule(update: Update, context: ContextTypes.DEFAUL
         if lessons:
             message_parts.append("📚 <b>Всі заняття на день:</b>")
             message_parts.append("")
-            for i, lesson in enumerate(lessons):
+            
+            # Сортуємо заняття по часу
+            sorted_lessons = sorted(lessons, key=lambda x: x['time'])
+            
+            for i, lesson in enumerate(sorted_lessons):
                 message_parts.append(schedule.format_lesson_for_display(lesson, is_current=False))
-                # Додаємо розділювач між лекціями (крім останньої)
-                if i < len(lessons) - 1:
-                    message_parts.append("─" * 20)
+                
+                # Перевіряємо великі вікна між заняттями (>15 хв)
+                # НЕ враховуємо час до початку першої пари та після останньої
+                if i < len(sorted_lessons) - 1:
+                    current_end = lesson['time'].split('-')[1] if '-' in lesson['time'] else None
+                    next_start = sorted_lessons[i + 1]['time'].split('-')[0] if '-' in sorted_lessons[i + 1]['time'] else None
+                    
+                    if current_end and next_start:
+                        try:
+                            end_time = datetime.strptime(current_end, "%H:%M")
+                            start_time = datetime.strptime(next_start, "%H:%M")
+                            gap_minutes = (start_time - end_time).total_seconds() / 60
+                            
+                            # Показуємо тільки вікна більше 15 хвилин між заняттями
+                            if gap_minutes > 15:
+                                hours = int(gap_minutes // 60)
+                                minutes = int(gap_minutes % 60)
+                                if hours > 0:
+                                    gap_text = f"{hours}г {minutes}хв"
+                                else:
+                                    gap_text = f"{minutes}хв"
+                                message_parts.append("")
+                                message_parts.append(f"⏸️ <b>Вікно:</b> {gap_text}")
+                                message_parts.append("")
+                        except (ValueError, IndexError):
+                            pass
+                    
+                    # Додаємо розділювач між лекціями (крім останньої)
+                    if i < len(sorted_lessons) - 1:
+                        message_parts.append("─" * 20)
         else:
             message_parts.append("📚 <b>Занять на сьогодні немає</b>")
     
@@ -411,6 +444,105 @@ async def show_current_day_schedule(update: Update, context: ContextTypes.DEFAUL
             await update.callback_query.message.reply_text(message_text, parse_mode='HTML', reply_markup=keyboard)
     else:
         await update.message.reply_text(message_text, parse_mode='HTML', reply_markup=keyboard)
+
+
+async def show_teacher_workload_stats(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
+    """Показ статистики навантаження викладача"""
+    try:
+        with get_session() as session:
+            # Отримуємо всі заняття викладача
+            entries = session.query(ScheduleEntry).filter(
+                ScheduleEntry.teacher_user_id == user_id
+            ).all()
+            
+            # Розраховуємо години
+            total_hours = 0
+            by_day = {}
+            by_type = {}
+            lessons_count = 0
+            
+            for entry in entries:
+                # Парсимо час (наприклад, "08:30-09:50")
+                try:
+                    time_str = entry.time
+                    if '-' in time_str:
+                        start_str, end_str = time_str.split('-')
+                        start = datetime.strptime(start_str, "%H:%M")
+                        end = datetime.strptime(end_str, "%H:%M")
+                        duration = (end - start).total_seconds() / 3600  # Години
+                        total_hours += duration
+                        lessons_count += 1
+                        
+                        # По днях
+                        day = entry.day_of_week
+                        by_day[day] = by_day.get(day, 0) + duration
+                        
+                        # По типах заняття
+                        lesson_type = entry.lesson_type
+                        by_type[lesson_type] = by_type.get(lesson_type, 0) + duration
+                except (ValueError, AttributeError):
+                    continue
+            
+            # Отримуємо ПІБ викладача
+            full_name = auth_manager.get_user_full_name(user_id)
+            teacher_display = full_name if full_name else (update.effective_user.username or "Викладач")
+            
+            # Формуємо повідомлення
+            day_names_ua = {
+                'monday': 'Понеділок', 'tuesday': 'Вівторок', 'wednesday': 'Середа',
+                'thursday': 'Четвер', 'friday': "П'ятниця", 'saturday': 'Субота', 'sunday': 'Неділя'
+            }
+            
+            message_parts = [
+                f"📈 <b>Статистика навантаження</b>",
+                f"👨‍🏫 <b>{teacher_display}</b>",
+                "─" * 30,
+                f"⏰ <b>Загальне навантаження:</b> {total_hours:.1f} год/тиждень",
+                f"📚 <b>Кількість занять:</b> {lessons_count}",
+                ""
+            ]
+            
+            # По днях
+            if by_day:
+                message_parts.append("<b>📅 По днях тижня:</b>")
+                days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                for day in days_order:
+                    if day in by_day:
+                        day_name = day_names_ua.get(day, day)
+                        hours = by_day[day]
+                        message_parts.append(f"  {day_name}: {hours:.1f} год")
+                message_parts.append("")
+            
+            # По типах заняття
+            if by_type:
+                message_parts.append("<b>📖 По типах заняття:</b>")
+                for lesson_type, hours in sorted(by_type.items(), key=lambda x: x[1], reverse=True):
+                    message_parts.append(f"  {lesson_type}: {hours:.1f} год")
+            
+            message_text = "\n".join(message_parts)
+            
+            # Створюємо клавіатуру
+            back_keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Назад в меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_menu"))
+            ]])
+            
+            query = update.callback_query
+            if query:
+                await safe_edit_message_text(query, message_text, parse_mode='HTML', reply_markup=back_keyboard)
+            else:
+                await update.message.reply_text(message_text, parse_mode='HTML', reply_markup=back_keyboard)
+                
+    except Exception as e:
+        logger.log_error(f"Помилка показу статистики навантаження: {e}")
+        error_text = "❌ Помилка завантаження статистики навантаження."
+        back_keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔙 Назад в меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_menu"))
+        ]])
+        query = update.callback_query
+        if query:
+            await safe_edit_message_text(query, error_text, parse_mode='HTML', reply_markup=back_keyboard)
+        else:
+            await update.message.reply_text(error_text, parse_mode='HTML', reply_markup=back_keyboard)
 
 
 async def show_week_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, week_type: Optional[str] = None) -> None:
@@ -453,10 +585,21 @@ async def show_week_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 exam_emoji = "✅" if lesson["exam_type"] == "залік" else "📝"
                 meet_link = lesson['conference_link']
                 
+                # Показуємо групу замість викладача
+                group_info = lesson.get('group_name', 'не вказана')
+                headman_info = ""
+                if lesson.get('headman_name') or lesson.get('headman_phone'):
+                    headman_parts = []
+                    if lesson.get('headman_name'):
+                        headman_parts.append(lesson['headman_name'])
+                    if lesson.get('headman_phone'):
+                        headman_parts.append(lesson['headman_phone'])
+                    if headman_parts:
+                        headman_info = f"\n  👤 Староста: {' | '.join(headman_parts)}"
+                
                 lesson_text = (
                     f"  {type_emoji} <b>{lesson['subject']}</b>\n"
-                    f"  🕐 {lesson['time']} | 👨‍🏫 {lesson['teacher']}\n"
-                    f"  📞 {lesson['teacher_phone']}\n"
+                    f"  🕐 {lesson['time']} | 👥 Група: {group_info}{headman_info}\n"
                     f"  💻 <a href='{meet_link}'>Google Meet</a> | {exam_emoji} {lesson['exam_type']}"
                 )
                 message_parts.append(lesson_text)
@@ -524,6 +667,7 @@ def create_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("📅 Сьогодні", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_today"))],
             [InlineKeyboardButton("📆 Тиждень", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_week"))],
             [InlineKeyboardButton("📊 Прогрес навчання", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_progress"))],
+            [InlineKeyboardButton("📈 Статистика", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_stats"))],
             [InlineKeyboardButton(notification_button_text, callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_toggle_notifications"))],
             [InlineKeyboardButton("ℹ️ Допомога", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_help"))]
         ])
@@ -593,8 +737,6 @@ def create_alternate_week_keyboard(user_id: int, week_type: str) -> InlineKeyboa
 def create_progress_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Створення клавіатури для прогрес-меню"""
     keyboard = [
-        [InlineKeyboardButton("📚 Повний графік", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_full_schedule"))],
-        [InlineKeyboardButton("🔄 Оновити прогрес", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_progress"))],
         [InlineKeyboardButton("🔙 Назад в меню", callback_data=csrf_manager.add_csrf_to_callback_data(user_id, "cmd_menu"))]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -740,6 +882,15 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # Показуємо поточне заняття з таймером
         await show_current_lesson_for_parent(update, context, user_id)
+        
+    elif command == "stats":
+        if not auth_manager.is_user_allowed(user_id):
+            logger.log_unauthorized_access_attempt(user_id, "menu callback stats")
+            await query.edit_message_text("❌ У вас немає доступу до розкладу.")
+            return
+        
+        # Показуємо статистику навантаження викладача
+        await show_teacher_workload_stats(update, context, user_id)
         
     elif command == "progress":
         if not auth_manager.is_user_allowed(user_id):

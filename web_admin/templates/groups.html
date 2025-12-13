@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Групи - TeachHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-collection"></i> Управління групами</h1>
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
+            <i class="bi bi-plus-circle"></i> Додати групу
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-table"></i> Список груп ({{groups|length}})</h5>
+            </div>
+            <div class="card-body">
+                {% if groups %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Назва групи</th>
+                                <th>Староста</th>
+                                <th>Телефон старости</th>
+                                <th>Куратор</th>
+                                <th>Створено</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in groups %}
+                            <tr>
+                                <td><strong>{{group.name}}</strong></td>
+                                <td>{{group.headman_name or '-'}}</td>
+                                <td>{{group.headman_phone or '-'}}</td>
+                                <td>
+                                    {% if group.curator_display %}
+                                        {{group.curator_display}}
+                                    {% else %}
+                                        <span class="text-muted">Не встановлено</span>
+                                    {% endif %}
+                                </td>
+                                <td><small class="text-muted">{{group.created_at.strftime('%d.%m.%Y') if group.created_at else '-'}}</small></td>
+                                <td>
+                                    <button class="btn btn-sm btn-warning" onclick="showEditGroupModal({{group.id}}, '{{group.name}}', '{{group.headman_name or ''}}', '{{group.headman_phone or ''}}', {{group.curator_user_id or 'null'}})">
+                                        <i class="bi bi-pencil"></i> Редагувати
+                                    </button>
+                                    <form method="POST" action="{{url_for('delete_group', group_id=group.id)}}" style="display:inline;" onsubmit="return confirm('Видалити групу {{group.name}}?');">
+                                        <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="bi bi-trash"></i> Видалити
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Груп поки немає. Додайте першу групу.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal додавання групи -->
+<div class="modal fade" id="addGroupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Додати групу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{url_for('add_group')}}">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Назва групи <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name" placeholder="Наприклад: KCM-24-11" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ПІБ старости</label>
+                        <input type="text" class="form-control" name="headman_name" placeholder="Іванов Іван Іванович">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Телефон старости</label>
+                        <input type="text" class="form-control" name="headman_phone" placeholder="+380501234567">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Куратор групи</label>
+                        <select class="form-select" name="curator_user_id">
+                            <option value="">-- Виберіть куратора --</option>
+                            {% for teacher in teachers %}
+                            <option value="{{teacher.user_id}}">
+                                {% if teacher.full_name %}
+                                    {{teacher.full_name}} (@{{teacher.username}})
+                                {% else %}
+                                    @{{teacher.username}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Додати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal редагування групи -->
+<div class="modal fade" id="editGroupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Редагувати групу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="" id="editGroupForm">
+                <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Назва групи <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name" id="edit_group_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ПІБ старости</label>
+                        <input type="text" class="form-control" name="headman_name" id="edit_headman_name">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Телефон старости</label>
+                        <input type="text" class="form-control" name="headman_phone" id="edit_headman_phone">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Куратор групи</label>
+                        <select class="form-select" name="curator_user_id" id="edit_curator_user_id">
+                            <option value="">-- Виберіть куратора --</option>
+                            {% for teacher in teachers %}
+                            <option value="{{teacher.user_id}}">
+                                {% if teacher.full_name %}
+                                    {{teacher.full_name}} (@{{teacher.username}})
+                                {% else %}
+                                    @{{teacher.username}}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                    <button type="submit" class="btn btn-primary">Зберегти</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showEditGroupModal(groupId, name, headmanName, headmanPhone, curatorUserId) {
+    document.getElementById('editGroupForm').action = "{{url_for('edit_group', group_id=0)}}".replace('0', groupId);
+    document.getElementById('edit_group_name').value = name;
+    document.getElementById('edit_headman_name').value = headmanName || '';
+    document.getElementById('edit_headman_phone').value = headmanPhone || '';
+    document.getElementById('edit_curator_user_id').value = curatorUserId || '';
+    
+    const editModal = new bootstrap.Modal(document.getElementById('editGroupModal'));
+    editModal.show();
+}
+</script>
+{% endblock %}
+

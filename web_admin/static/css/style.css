@@ -51,6 +51,21 @@ body {
 [data-bs-theme="dark"] .modal-header {
     background-color: #212529;
     border-color: #495057;
+    color: #f8f9fa;
+}
+
+[data-bs-theme="dark"] .modal-body {
+    background-color: #2b3035;
+    color: #f8f9fa;
+}
+
+[data-bs-theme="dark"] .modal-footer {
+    background-color: #2b3035;
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
 }
 
 [data-bs-theme="dark"] .form-control,
@@ -101,16 +116,41 @@ body {
 .log-security { background-color: #ffe4cc; }
 .log-info { background-color: #e6f2ff; }
 
+[data-bs-theme="dark"] .log-error { 
+    background-color: #4a1f1f; 
+    color: #ffcccc;
+}
+[data-bs-theme="dark"] .log-warning { 
+    background-color: #4a3d1f; 
+    color: #ffe6cc;
+}
+[data-bs-theme="dark"] .log-security { 
+    background-color: #4a3a1f; 
+    color: #ffe4cc;
+}
+[data-bs-theme="dark"] .log-info { 
+    background-color: #1f2a4a; 
+    color: #cce6ff;
+}
+
 /* Таблиці */
 .table-hover tbody tr:hover {
     background-color: #f5f5f5;
     cursor: pointer;
 }
 
+[data-bs-theme="dark"] .table-hover tbody tr:hover {
+    background-color: #343a40;
+}
+
 /* Форми */
 .form-label {
     font-weight: 500;
     color: #495057;
+}
+
+[data-bs-theme="dark"] .form-label {
+    color: #f8f9fa;
 }
 
 .form-control:focus, .form-select:focus {
@@ -140,6 +180,11 @@ body {
     border-bottom: 2px solid #dee2e6;
 }
 
+[data-bs-theme="dark"] .modal-header {
+    background-color: #212529 !important;
+    border-bottom-color: #495057 !important;
+}
+
 .modal-title {
     font-weight: 600;
 }
@@ -148,6 +193,16 @@ body {
 footer {
     margin-top: 3rem;
     border-top: 1px solid #dee2e6;
+}
+
+[data-bs-theme="dark"] footer {
+    background-color: #212529 !important;
+    border-top-color: #495057;
+    color: #f8f9fa;
+}
+
+[data-bs-theme="dark"] footer .text-muted {
+    color: #adb5bd !important;
 }
 
 /* Air Alert Pulse Animation */
@@ -180,6 +235,136 @@ footer {
     font-size: 0.9rem;
     padding: 0.4rem 0.8rem;
     font-weight: 500;
+}
+
+/* Badge styles for dark theme */
+[data-bs-theme="dark"] .badge.bg-light,
+[data-bs-theme="dark"] .user-badge {
+    background-color: #495057 !important;
+    color: #f8f9fa !important;
+}
+
+[data-bs-theme="dark"] .badge.text-dark {
+    color: #f8f9fa !important;
+}
+
+/* Text colors for dark theme */
+[data-bs-theme="dark"] .text-muted {
+    color: #adb5bd !important;
+}
+
+[data-bs-theme="dark"] .text-dark {
+    color: #f8f9fa !important;
+}
+
+/* Background colors for dark theme */
+[data-bs-theme="dark"] .bg-light {
+    background-color: #2b3035 !important;
+    color: #f8f9fa !important;
+}
+
+/* Alert messages for dark theme */
+[data-bs-theme="dark"] .alert {
+    border-color: #495057;
+}
+
+[data-bs-theme="dark"] .alert-success {
+    background-color: #1e4620;
+    border-color: #2d5a30;
+    color: #d4edda;
+}
+
+[data-bs-theme="dark"] .alert-danger {
+    background-color: #4a1f1f;
+    border-color: #5a2f2f;
+    color: #f8d7da;
+}
+
+[data-bs-theme="dark"] .alert-warning {
+    background-color: #4a3d1f;
+    border-color: #5a4d2f;
+    color: #fff3cd;
+}
+
+[data-bs-theme="dark"] .alert-info {
+    background-color: #1f2a4a;
+    border-color: #2f3a5a;
+    color: #d1ecf1;
+}
+
+/* Login page for dark theme */
+[data-bs-theme="dark"] .bg-light {
+    background-color: #1a1d20 !important;
+}
+
+[data-bs-theme="dark"] .card {
+    background-color: #2b3035;
+    border-color: #495057;
+}
+
+/* Small text for dark theme */
+[data-bs-theme="dark"] small.text-muted {
+    color: #adb5bd !important;
+}
+
+/* Disabled inputs for dark theme */
+[data-bs-theme="dark"] .form-control:disabled,
+[data-bs-theme="dark"] .form-control[readonly] {
+    background-color: #343a40;
+    border-color: #495057;
+    color: #adb5bd;
+    opacity: 1;
+}
+
+/* Card headers with colored backgrounds for dark theme */
+[data-bs-theme="dark"] .card-header.bg-primary {
+    background-color: #0d6efd !important;
+    color: #ffffff !important;
+}
+
+[data-bs-theme="dark"] .card-header.bg-warning {
+    background-color: #ffc107 !important;
+    color: #000000 !important;
+}
+
+/* Cards with colored backgrounds for dark theme */
+[data-bs-theme="dark"] .card.bg-primary {
+    background-color: #0d6efd !important;
+    color: #ffffff !important;
+    border-color: #0a58ca !important;
+}
+
+[data-bs-theme="dark"] .card.bg-success {
+    background-color: #198754 !important;
+    color: #ffffff !important;
+    border-color: #146c43 !important;
+}
+
+[data-bs-theme="dark"] .card.bg-warning {
+    background-color: #ffc107 !important;
+    color: #000000 !important;
+    border-color: #cc9a06 !important;
+}
+
+[data-bs-theme="dark"] .card.bg-info {
+    background-color: #0dcaf0 !important;
+    color: #000000 !important;
+    border-color: #0aa2c0 !important;
+}
+
+/* Progress bars for dark theme */
+[data-bs-theme="dark"] .progress {
+    background-color: #343a40;
+}
+
+[data-bs-theme="dark"] .progress-bar {
+    color: #ffffff;
+}
+
+/* Container for dark theme */
+[data-bs-theme="dark"] .container,
+[data-bs-theme="dark"] .container-fluid {
+    color: #f8f9fa;
 }
 
 

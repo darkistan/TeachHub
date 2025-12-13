@@ -202,6 +202,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Викладач <span class="text-danger">*</span></label>
+                        {% if current_user.is_admin %}
                         <select class="form-select" name="teacher_user_id" required>
                             <option value="">-- Виберіть викладача --</option>
                             {% for teacher in teachers %}
@@ -211,6 +212,11 @@
                             {% endfor %}
                         </select>
                         <small class="text-muted">Обов'язково виберіть викладача для періоду</small>
+                        {% else %}
+                        <input type="hidden" name="teacher_user_id" value="{{current_user.user_id}}">
+                        <input type="text" class="form-control" value="{{current_user.full_name}}" disabled>
+                        <small class="text-muted">Ви додаєте період для себе</small>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="modal-footer">

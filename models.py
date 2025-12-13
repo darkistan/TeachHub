@@ -56,6 +56,7 @@ class ScheduleEntry(Base):
     conference_link = Column(String(500))
     exam_type = Column(String(50))  # залік, екзамен
     week_type = Column(String(20), nullable=False, index=True)  # numerator, denominator
+    group_id = Column(Integer, ForeignKey('groups.id'), nullable=True, index=True)  # ID групи
     
     def __repr__(self):
         return f"<ScheduleEntry(day={self.day_of_week}, subject='{self.subject}', week={self.week_type}, teacher_user_id={self.teacher_user_id})>"
@@ -180,6 +181,22 @@ class BotConfig(Base):
     
     def __repr__(self):
         return f"<BotConfig(key='{self.key}', value='{self.value[:50]}')>"
+
+
+class Group(Base):
+    """Модель навчальної групи"""
+    __tablename__ = 'groups'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False, unique=True, index=True)  # Назва групи
+    headman_name = Column(String(200))  # ПІБ старости групи
+    headman_phone = Column(String(50))  # Телефон старости
+    curator_user_id = Column(Integer, ForeignKey('users.user_id'), nullable=True, index=True)  # ID куратора (викладача)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    def __repr__(self):
+        return f"<Group(name='{self.name}', curator_user_id={self.curator_user_id})>"
 
 
 

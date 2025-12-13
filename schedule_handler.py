@@ -145,6 +145,18 @@ class ScheduleHandler:
                         if user and getattr(user, 'full_name', None):
                             teacher_name = user.full_name
                     
+                    # Отримуємо інформацію про групу, якщо є group_id
+                    group_name = None
+                    headman_name = None
+                    headman_phone = None
+                    if entry.group_id:
+                        from models import Group
+                        group = session.query(Group).filter(Group.id == entry.group_id).first()
+                        if group:
+                            group_name = group.name
+                            headman_name = group.headman_name
+                            headman_phone = group.headman_phone
+                    
                     result.append({
                         'time': entry.time,
                         'subject': entry.subject,
@@ -154,7 +166,11 @@ class ScheduleHandler:
                         'teacher_phone': entry.teacher_phone,
                         'classroom': entry.classroom,
                         'conference_link': entry.conference_link,
-                        'exam_type': entry.exam_type
+                        'exam_type': entry.exam_type,
+                        'group_id': entry.group_id,
+                        'group_name': group_name,
+                        'headman_name': headman_name,
+                        'headman_phone': headman_phone
                     })
                 
                 return result
@@ -254,8 +270,25 @@ class ScheduleHandler:
         message_parts.extend([
             f"{type_emoji} <b>{lesson['subject']}</b> ({lesson['type']})",
             f"🕐 {lesson['time']}",
-            f"👨‍🏫 <b>Викладач:</b> {lesson['teacher']}",
-            f"📞 <b>Телефон:</b> <code>{lesson['teacher_phone']}</code>",
+        ])
+        
+        # Додаємо інформацію про групу замість викладача
+        if lesson.get('group_name'):
+            message_parts.append(f"👥 <b>Група:</b> {lesson['group_name']}")
+            
+            # Додаємо дані старости, якщо вони є
+            if lesson.get('headman_name') or lesson.get('headman_phone'):
+                headman_info = []
+                if lesson.get('headman_name'):
+                    headman_info.append(lesson['headman_name'])
+                if lesson.get('headman_phone'):
+                    headman_info.append(f"<code>{lesson['headman_phone']}</code>")
+                if headman_info:
+                    message_parts.append(f"👤 <b>Староста:</b> {' | '.join(headman_info)}")
+        else:
+            message_parts.append(f"👥 <b>Група:</b> не вказана")
+        
+        message_parts.extend([
             f"💻 <b>Google Meet:</b> <a href='{meet_link}'>Приєднатися</a>",
             f"{exam_emoji} <b>Тип контролю:</b> {lesson['exam_type']}"
         ])

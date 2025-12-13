@@ -59,6 +59,7 @@
                         <th>Час</th>
                         <th>Предмет</th>
                         <th>Тип</th>
+                        <th>Група</th>
                         <th>Викладач</th>
                         <th>Телефон</th>
                         <th>Google Meet</th>
@@ -72,6 +73,13 @@
                         <td><strong>{{entry.time}}</strong></td>
                         <td>{{entry.subject}}</td>
                         <td><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td>
+                            {% if entry.group_name %}
+                                <span class="badge bg-secondary">{{entry.group_name}}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td>{{entry.teacher_display if entry.teacher_display else entry.teacher}}</td>
                         <td><small>{{entry.teacher_phone}}</small></td>
                         <td>
@@ -83,7 +91,7 @@
                         </td>
                         <td><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
                         <td>
-                            <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}')">
+                            <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}', {{entry.group_id or 'null'}})">
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <form method="POST" action="{{url_for('delete_schedule_entry', entry_id=entry.id)}}" style="display:inline;" onsubmit="return confirm('Видалити заняття {{entry.subject}}?');">
@@ -95,7 +103,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="text-center text-muted">Занять немає</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">Занять немає</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -110,6 +118,7 @@
                         <th>Час</th>
                         <th>Предмет</th>
                         <th>Тип</th>
+                        <th>Група</th>
                         <th>Викладач</th>
                         <th>Телефон</th>
                         <th>Google Meet</th>
@@ -123,6 +132,13 @@
                         <td><strong>{{entry.time}}</strong></td>
                         <td>{{entry.subject}}</td>
                         <td><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td>
+                            {% if entry.group_name %}
+                                <span class="badge bg-secondary">{{entry.group_name}}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td>{{entry.teacher_display if entry.teacher_display else entry.teacher}}</td>
                         <td><small>{{entry.teacher_phone}}</small></td>
                         <td>
@@ -134,7 +150,7 @@
                         </td>
                         <td><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
                         <td>
-                            <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}')">
+                            <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}', {{entry.group_id or 'null'}})">
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <form method="POST" action="{{url_for('delete_schedule_entry', entry_id=entry.id)}}" style="display:inline;" onsubmit="return confirm('Видалити заняття {{entry.subject}}?');">
@@ -146,7 +162,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="8" class="text-center text-muted">Занять немає</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">Занять немає</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -217,6 +233,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Викладач</label>
+                        {% if current_user.is_admin %}
                         <select class="form-select" name="teacher_user_id" id="add_teacher_user_id" required>
                             <option value="">Виберіть викладача</option>
                             {% for teacher in teachers %}
@@ -231,6 +248,11 @@
                         </select>
                         <input type="hidden" name="teacher" id="add_teacher_name" value="">
                         <small class="text-muted">ПІБ викладача буде заповнено автоматично</small>
+                        {% else %}
+                        <input type="hidden" name="teacher_user_id" value="{{current_user.user_id}}">
+                        <input type="text" class="form-control" value="{{current_user.full_name}}" disabled>
+                        <small class="text-muted">Ви додаєте заняття для себе</small>
+                        {% endif %}
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
@@ -245,6 +267,16 @@
                     <div class="mb-3">
                         <label class="form-label">Google Meet посилання</label>
                         <input type="url" class="form-control" name="conference_link" placeholder="https://meet.google.com/...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Група</label>
+                        <select class="form-select" name="group_id">
+                            <option value="">-- Виберіть групу (необов'язково) --</option>
+                            {% for group in groups %}
+                            <option value="{{group.id}}">{{group.name}}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Група, для якої проводиться заняття</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -340,6 +372,16 @@
                         <label class="form-label">Google Meet посилання</label>
                         <input type="url" class="form-control" name="conference_link" id="edit_conference_link">
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Група</label>
+                        <select class="form-select" name="group_id" id="edit_group_id">
+                            <option value="">-- Виберіть групу (необов'язково) --</option>
+                            {% for group in groups %}
+                            <option value="{{group.id}}">{{group.name}}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Група, для якої проводиться заняття</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
@@ -399,7 +441,7 @@ document.getElementById('edit_teacher_user_id')?.addEventListener('change', func
     }
 });
 
-function editLesson(id, day, time, subject, type, teacherUserId, phone, classroom, meet, exam, week) {
+function editLesson(id, day, time, subject, type, teacherUserId, phone, classroom, meet, exam, week, groupId) {
     document.getElementById('editLessonForm').action = '/schedule/edit/' + id;
     document.getElementById('edit_day').value = day;
     document.getElementById('edit_time').value = time;
@@ -411,6 +453,7 @@ function editLesson(id, day, time, subject, type, teacherUserId, phone, classroo
     document.getElementById('edit_conference_link').value = meet;
     document.getElementById('edit_exam_type').value = exam;
     document.getElementById('edit_week_type').value = week;
+    document.getElementById('edit_group_id').value = groupId || '';
     
     // Оновлюємо ПІБ при відкритті форми
     if (teacherUserId && teachers[teacherUserId]) {
