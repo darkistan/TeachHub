@@ -98,13 +98,34 @@ class AnnouncementManager:
                             status = 'sent'
                             sent_count += 1
                         else:
-                            error_data = response.json()
-                            if error_data.get('error_code') == 403:
+                            # Спробуємо отримати дані про помилку
+                            try:
+                                error_data = response.json()
+                                error_code = error_data.get('error_code', 0)
+                                error_description = error_data.get('description', 'Unknown error')
+                            except (ValueError, KeyError):
+                                # Якщо не вдалося розпарсити JSON, використовуємо текст відповіді
+                                error_code = response.status_code
+                                error_description = response.text[:100] if response.text else 'Unknown error'
+                            
+                            # Визначаємо статус та обробляємо різні типи помилок
+                            if error_code == 403:
                                 status = 'blocked'  # Користувач заблокував бота
+                            elif error_code == 400:
+                                error_desc_lower = error_description.lower()
+                                if 'chat not found' in error_desc_lower or 'chat_id is empty' in error_desc_lower or 'bad request: chat not found' in error_desc_lower:
+                                    status = 'blocked'  # Чат не знайдено (користувач не запустив бота або видалив чат)
+                                else:
+                                    status = 'failed'
                             else:
                                 status = 'failed'
+                            
                             failed_count += 1
-                            logger.log_warning(f"Помилка відправки оголошення {announcement.id} користувачу {recipient_id}: {error_data.get('description', 'Unknown error')}")
+                            
+                            # Логуємо тільки реальні помилки, не нормальні ситуації (заблокований/не знайдений чат)
+                            if status == 'failed':
+                                logger.log_warning(f"Помилка відправки оголошення {announcement.id} користувачу {recipient_id}: {error_description}")
+                            # Для заблокованих/не знайдених чатів не логуємо - це нормальна ситуація
                         
                         # Зберігаємо історію відправки
                         recipient = AnnouncementRecipient(

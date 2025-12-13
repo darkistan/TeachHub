@@ -376,11 +376,13 @@ class DatabaseManager:
                 error_msg = str(e).lower()
                 
                 # Перевіряємо чи це помилка блокування
-                if 'locked' in error_msg or 'busy' in error_msg:
+                if 'locked' in error_msg or 'busy' in error_msg or 'database is locked' in error_msg:
                     retries += 1
                     if retries < max_retries:
                         wait_time = 0.5 * retries  # Exponential backoff
-                        logger.log_warning(f"БД заблокована, спроба {retries}/{max_retries}, очікування {wait_time}с")
+                        # Логуємо тільки якщо це не перша спроба або якщо це критична операція
+                        if retries > 1:
+                            logger.log_warning(f"БД заблокована, спроба {retries}/{max_retries}, очікування {wait_time:.1f}с")
                         time.sleep(wait_time)
                         continue
                     else:

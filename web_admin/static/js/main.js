@@ -2,8 +2,8 @@
 
 // ========== THEME TOGGLE ==========
 document.addEventListener('DOMContentLoaded', function() {
-    // Завантажуємо збережену тему
-    const savedTheme = localStorage.getItem('theme') || 'light';
+    // Завантажуємо збережену тему (за замовчуванням - темна)
+    const savedTheme = localStorage.getItem('theme') || 'dark';
     setTheme(savedTheme);
     
     // Обробник перемикача
