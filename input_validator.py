@@ -171,7 +171,7 @@ class InputValidator:
         if not role:
             return False
         
-        valid_roles = ['admin', 'user', 'control']
+        valid_roles = ['admin', 'user']
         return role.lower() in valid_roles
 
 

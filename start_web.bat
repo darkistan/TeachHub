@@ -1,6 +1,10 @@
 @echo off
-chcp 65001 > nul
+chcp 65001 > nul 2>&1
 cls
+
+:: Перехід в директорію скрипта
+cd /d %~dp0
+
 echo =============================================================
 echo    ZAPUSK WEB INTERFACE - TeachHub Admin v2.0
 echo =============================================================
@@ -32,7 +36,15 @@ echo =============================================================
 echo    Starting Web Interface...
 echo =============================================================
 echo.
-echo URL: http://127.0.0.1:5000
+
+REM Check mode
+if "%FLASK_ENV%"=="production" (
+    echo Mode: PRODUCTION (Waitress)
+    echo URL: Check config.env for HOST and PORT settings
+) else (
+    echo Mode: DEVELOPMENT (Flask dev server)
+    echo URL: http://127.0.0.1:5000
+)
 echo Press Ctrl+C to stop
 echo.
 

@@ -12,7 +12,10 @@ from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_wtf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
 
 # Додаємо батьківську директорію в Python path
@@ -27,7 +30,7 @@ from models import (
 )
 from air_alert import get_air_alert_manager
 from poll_manager import get_poll_manager
-from poll_manager import get_poll_manager
+from logger import logger
 
 # Завантажуємо змінні середовища
 load_dotenv("config.env")
@@ -37,10 +40,39 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}" if TELEGRAM_BOT_TOKEN else None
 DEVELOPER_TELEGRAM_ID = os.getenv("DEVELOPER_TELEGRAM_ID")
 
+# Перевірка режиму роботи
+FLASK_ENV = os.getenv('FLASK_ENV', 'development')
+FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'True').lower() == 'true' if FLASK_ENV == 'development' else False
+
 # Ініціалізація Flask
 app = Flask(__name__)
+app.config['ENV'] = FLASK_ENV
+app.config['DEBUG'] = FLASK_DEBUG and FLASK_ENV == 'development'
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['WTF_CSRF_ENABLED'] = True
+
+# Валідація SECRET_KEY для production
+if FLASK_ENV == 'production':
+    if app.config['SECRET_KEY'] == 'dev-secret-key-change-in-production':
+        import warnings
+        warnings.warn(
+            "⚠️ ВИКОРИСТОВУЄТЬСЯ DEV SECRET KEY В PRODUCTION! "
+            "Згенеруйте новий ключ: openssl rand -hex 32",
+            UserWarning
+        )
+        logger.log_error("КРИТИЧНО: Використовується dev SECRET_KEY в production!")
+
+# Налаштування для Cloudflare (ProxyFix для правильної обробки X-Forwarded-For)
+# Це дозволяє Flask правильно визначати IP клієнтів через Cloudflare
+if FLASK_ENV == 'production':
+    # ProxyFix обробляє заголовки X-Forwarded-For, X-Forwarded-Proto від Cloudflare
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1,      # Кількість проксі перед сервером (Cloudflare = 1)
+        x_proto=1,    # Обробка X-Forwarded-Proto (HTTP/HTTPS)
+        x_host=1,     # Обробка X-Forwarded-Host
+        x_port=1      # Обробка X-Forwarded-Port
+    )
 
 # CSRF захист
 csrf = CSRFProtect(app)
@@ -52,8 +84,53 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Будь ласка, увійдіть для доступу до цієї сторінки.'
 login_manager.login_message_category = 'info'
 
+# Ініціалізація Flask-Limiter для rate limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
 # Ініціалізація БД при запуску
 init_database()
+
+
+# Security Headers
+@app.after_request
+def set_security_headers(response):
+    """Додавання security headers до всіх відповідей"""
+    # Запобігання MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    # Запобігання clickjacking
+    response.headers['X-Frame-Options'] = 'DENY'
+    
+    # XSS Protection (застарілий, але все ще підтримується)
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    # Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Content Security Policy (базовий)
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none';"
+    )
+    response.headers['Content-Security-Policy'] = csp
+    
+    # Strict Transport Security (тільки якщо використовується HTTPS)
+    if request.is_secure or os.getenv('FLASK_ENV') == 'production':
+        # HSTS тільки для production з HTTPS
+        hsts_max_age = 31536000  # 1 рік
+        response.headers['Strict-Transport-Security'] = f'max-age={hsts_max_age}; includeSubDomains; preload'
+    
+    return response
 
 
 # Context processor для передачі metadata у всі шаблони
@@ -126,8 +203,9 @@ def admin_required(f):
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def login():
-    """Сторінка входу"""
+    """Сторінка входу з rate limiting (5 спроб на хвилину)"""
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     
@@ -165,9 +243,14 @@ def login():
                     web_user = WebUser(user)
                     login_user(web_user, remember=True)
                     
+                    # Логування успішного входу
+                    logger.log_info(f"Успішний вхід користувача {user.user_id} ({user.full_name or user.username})", user_id=user.user_id)
+                    
                     next_page = request.args.get('next')
                     return redirect(next_page) if next_page else redirect(url_for('dashboard'))
                 else:
+                    # Логування невдалої спроби входу
+                    logger.log_warning(f"Невдала спроба входу для користувача {user_id} з IP {get_remote_address()}", user_id=user_id if 'user_id' in locals() else None)
                     flash('Невірний пароль.', 'danger')
         except ValueError:
             flash('Помилка вибору користувача.', 'danger')
@@ -177,11 +260,35 @@ def login():
     return render_template('login.html', users=users_list)
 
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint для моніторингу"""
+    try:
+        # Перевірка підключення до БД
+        with get_session() as session:
+            session.execute("SELECT 1")
+        
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'environment': FLASK_ENV
+        }), 200
+    except Exception as e:
+        logger.log_error(f"Health check failed: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e) if FLASK_ENV == 'development' else 'Internal error',
+            'timestamp': datetime.now().isoformat()
+        }), 503
+
+
 @app.route('/logout')
 @login_required
 def logout():
     """Вихід з системи"""
+    user_id = current_user.user_id
     logout_user()
+    logger.log_info(f"Користувач {user_id} вийшов з системи", user_id=user_id)
     flash('Ви вийшли з системи.', 'info')
     return redirect(url_for('login'))
 
@@ -447,6 +554,14 @@ def delete_user(user_id):
                 # 11. Видаляємо самого користувача
                 session.delete(user)
                 session.commit()
+                
+                # Логування критичної дії
+                logger.log_warning(
+                    f"КРИТИЧНА ДІЯ: Користувач {current_user.user_id} ({current_user.full_name}) "
+                    f"видалив користувача {user_id} (@{username}). "
+                    f"Видалено записів: {deleted_count}, залишено для статистики: {kept_for_stats}",
+                    user_id=current_user.user_id
+                )
                 
                 # Формуємо повідомлення з інформацією про збережені дані
                 message = f'Користувача @{username} видалено!'
@@ -2010,10 +2125,47 @@ def stats():
         return render_template('stats.html', command_stats=[], daily_activity=[], user_activity=[], general_stats={}, teacher_workload=[])
 
 
+# Favicon handler (ігноруємо запити на favicon.ico)
+@app.route('/favicon.ico')
+def favicon():
+    """Обробка запитів на favicon.ico"""
+    return '', 204  # No Content
+
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    """Обробка 404 помилок"""
+    # Не логуємо 404 для favicon.ico
+    if '/favicon.ico' not in request.url:
+        if FLASK_ENV == 'production':
+            logger.log_warning(f"404 помилка: {request.url}")
+    return render_template('error.html', error_code=404, error_message='Сторінку не знайдено'), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Обробка 500 помилок"""
+    logger.log_error(f"500 помилка: {str(error)}")
+    if FLASK_ENV == 'production':
+        return render_template('error.html', error_code=500, error_message='Внутрішня помилка сервера'), 500
+    else:
+        # В development показуємо деталі помилки
+        raise error
+
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Обробка rate limit помилок"""
+    logger.log_warning(f"Rate limit exceeded для IP {get_remote_address()}")
+    return jsonify({'error': 'Занадто багато запитів. Спробуйте пізніше.'}), 429
+
+
 @app.route('/api/alert-status')
 @csrf.exempt
+@limiter.limit("30 per minute")
 def api_alert_status():
-    """API для отримання статусу повітряної тривоги"""
+    """API для отримання статусу повітряної тривоги з rate limiting"""
     try:
         import asyncio
         air_alert_manager = get_air_alert_manager()

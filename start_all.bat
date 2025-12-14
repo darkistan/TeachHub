@@ -1,5 +1,5 @@
 @echo off
-chcp 65001 > nul
+chcp 65001 > nul 2>&1
 cls
 echo =============================================================
 echo    STARTING FULL SYSTEM - TeachHub v2.0

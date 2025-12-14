@@ -101,6 +101,15 @@ if not exist config.env (
     echo    - FLASK_SECRET_KEY random string for web admin
     echo    - ALERTS_API_TOKEN from alerts.in.ua
     echo.
+    set /p GENERATE_KEY="Generate FLASK_SECRET_KEY now? (y/n): "
+    if /i "!GENERATE_KEY!"=="y" (
+        echo.
+        echo [INFO] Generating secret key...
+        venv\Scripts\python.exe generate_secret_key.py
+        echo.
+        echo [INFO] Copy the key above and add it to config.env
+        echo.
+    )
     set /p OPENEDITOR="Open config.env in notepad now? (y/n): "
     if /i "!OPENEDITOR!"=="y" (
         notepad config.env

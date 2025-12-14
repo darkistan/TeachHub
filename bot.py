@@ -4,10 +4,17 @@ Telegram бот TeachHub для викладачів
 Управління розкладом та прогресом навчання
 """
 import os
+import sys
 import asyncio
 import logging
 from typing import Optional
 from dotenv import load_dotenv
+
+# Додаємо поточну директорію в Python path для імпорту модулів
+if __name__ == '__main__':
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
@@ -1142,6 +1149,74 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+async def safe_send_html_message(update_or_query, text: str, reply_markup=None, is_edit: bool = False) -> bool:
+    """
+    Безпечна відправка/редагування HTML повідомлення з обробкою помилок парсингу
+    
+    Args:
+        update_or_query: Update або CallbackQuery об'єкт
+        text: Текст повідомлення з HTML розміткою
+        reply_markup: Клавіатура
+        is_edit: True якщо редагування, False якщо нова відправка
+        
+    Returns:
+        True якщо успішно, False інакше
+    """
+    import re
+    
+    try:
+        if is_edit:
+            # Редагування повідомлення
+            if hasattr(update_or_query, 'edit_message_text'):
+                await update_or_query.edit_message_text(text, parse_mode='HTML', reply_markup=reply_markup)
+            else:
+                await update_or_query.edit_message_text(text, parse_mode='HTML', reply_markup=reply_markup)
+        else:
+            # Нова відправка
+            if hasattr(update_or_query, 'reply_text'):
+                await update_or_query.reply_text(text, parse_mode='HTML', reply_markup=reply_markup)
+            elif hasattr(update_or_query, 'message') and hasattr(update_or_query.message, 'reply_text'):
+                await update_or_query.message.reply_text(text, parse_mode='HTML', reply_markup=reply_markup)
+            else:
+                await update_or_query.reply_text(text, parse_mode='HTML', reply_markup=reply_markup)
+        return True
+    except Exception as e:
+        error_str = str(e).lower()
+        if "parse entities" in error_str or "can't parse" in error_str or "can't find end" in error_str:
+            # Помилка парсингу HTML - видаляємо HTML теги та екрануємо
+            logger.log_warning(f"Помилка парсингу HTML, використовуємо plain text: {e}")
+            clean_text = re.sub(r'<[^>]+>', '', text)
+            # Екрануємо залишкові спеціальні символи
+            clean_text = clean_text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+            clean_text = clean_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            
+            try:
+                if is_edit:
+                    if hasattr(update_or_query, 'edit_message_text'):
+                        await update_or_query.edit_message_text(clean_text, parse_mode=None, reply_markup=reply_markup)
+                    else:
+                        await update_or_query.edit_message_text(clean_text, parse_mode=None, reply_markup=reply_markup)
+                else:
+                    if hasattr(update_or_query, 'reply_text'):
+                        await update_or_query.reply_text(clean_text, parse_mode=None, reply_markup=reply_markup)
+                    elif hasattr(update_or_query, 'message') and hasattr(update_or_query.message, 'reply_text'):
+                        await update_or_query.message.reply_text(clean_text, parse_mode=None, reply_markup=reply_markup)
+                    else:
+                        await update_or_query.reply_text(clean_text, parse_mode=None, reply_markup=reply_markup)
+                return True
+            except Exception as e2:
+                logger.log_error(f"Помилка відправки plain text повідомлення: {e2}")
+                return False
+        else:
+            # Інша помилка
+            if "message is not modified" in error_str:
+                if hasattr(update_or_query, 'answer'):
+                    await update_or_query.answer("✅ Дані вже актуальні")
+                return True
+            logger.log_error(f"Помилка відправки/редагування повідомлення: {e}")
+            return False
+
+
 async def safe_edit_message_text(query, text: str, parse_mode: str = None, reply_markup=None) -> bool:
     """
     Безпечне редагування повідомлення з обробкою помилок
@@ -1159,14 +1234,54 @@ async def safe_edit_message_text(query, text: str, parse_mode: str = None, reply
         await query.edit_message_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
         return True
     except Exception as e:
-        if "Message is not modified" in str(e):
+        error_str = str(e)
+        
+        if "Message is not modified" in error_str:
             # Повідомлення не змінилося, просто відповідаємо
             await query.answer("✅ Дані вже актуальні")
             return True
+        elif "parse entities" in error_str.lower() or "can't parse" in error_str.lower() or "can't find end" in error_str.lower():
+            # Помилка парсингу HTML/Markdown - спробуємо без parse_mode
+            logger.log_warning(f"Помилка парсингу {parse_mode}, спроба без форматування: {e}")
+            try:
+                # Видаляємо HTML теги та екрануємо спеціальні символи
+                import re
+                # Видаляємо HTML теги
+                clean_text = re.sub(r'<[^>]+>', '', text)
+                # Відновлюємо та екрануємо спеціальні символи правильно
+                clean_text = clean_text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                clean_text = clean_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                await query.edit_message_text(clean_text, parse_mode=None, reply_markup=reply_markup)
+                return True
+            except Exception as e2:
+                logger.log_error(f"Помилка редагування повідомлення (fallback): {e2}")
+                await query.answer("❌ Помилка оновлення даних")
+                return False
         else:
             logger.log_error(f"Помилка редагування повідомлення: {e}")
             await query.answer("❌ Помилка оновлення даних")
             return False
+
+
+def escape_html(text: str) -> str:
+    """
+    Екранування спеціальних символів HTML для Telegram Bot API
+    
+    Args:
+        text: Текст для екранування
+        
+    Returns:
+        Екранований текст
+    """
+    if not text:
+        return text
+    
+    # Екранування HTML символів
+    text = text.replace('&', '&amp;')
+    text = text.replace('<', '&lt;')
+    text = text.replace('>', '&gt;')
+    
+    return text
 
 
 def escape_markdown(text: str) -> str:

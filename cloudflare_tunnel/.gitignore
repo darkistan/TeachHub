@@ -1,0 +1,12 @@
+# Cloudflare Tunnel - конфіденційні файли
+config/credentials.json
+config/config.yaml
+logs/*.log
+cloudflared/cloudflared.exe
+run_tunnel_service.bat
+
+# Тимчасові файли
+*.tmp
+*.bak
+*.swp
+
