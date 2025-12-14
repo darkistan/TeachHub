@@ -167,4 +167,63 @@ function createToastContainer() {
     return container;
 }
 
+// ========== ACTIVE NAVIGATION HIGHLIGHT ==========
+document.addEventListener('DOMContentLoaded', function() {
+    // Мапінг URL до ID навігаційних пунктів
+    const navMapping = {
+        '/': 'dashboard',
+        '/dashboard': 'dashboard',
+        '/users': 'users',
+        '/groups': 'groups',
+        '/schedule': 'schedule',
+        '/academic': 'academic',
+        '/announcements': 'announcements',
+        '/polls': 'polls',
+        '/logs': 'logs',
+        '/stats': 'stats',
+        '/settings': 'settings',
+        '/contact-developer': 'contact-developer'
+    };
+    
+    // Отримуємо поточний шлях
+    const currentPath = window.location.pathname;
+    
+    // Знаходимо відповідний пункт меню
+    let activeNavId = null;
+    for (const [path, navId] of Object.entries(navMapping)) {
+        if (currentPath === path || currentPath.startsWith(path + '/')) {
+            activeNavId = navId;
+            break;
+        }
+    }
+    
+    // Підсвічуємо активний пункт
+    if (activeNavId) {
+        const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+        navLinks.forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && (href.includes(activeNavId) || 
+                (activeNavId === 'dashboard' && (href === '/' || href.includes('dashboard'))))) {
+                link.classList.add('active');
+            }
+        });
+        
+        // Для dropdown меню
+        if (activeNavId === 'announcements' || activeNavId === 'polls') {
+            const commDropdown = document.getElementById('communicationsDropdown');
+            if (commDropdown) {
+                commDropdown.classList.add('active');
+            }
+        }
+        
+        if (activeNavId === 'logs' || activeNavId === 'stats' || 
+            activeNavId === 'settings' || activeNavId === 'contact-developer') {
+            const adminDropdown = document.getElementById('adminDropdown');
+            if (adminDropdown) {
+                adminDropdown.classList.add('active');
+            }
+        }
+    }
+});
+
 console.log('Schedule Bot Admin Panel v2.0 loaded successfully');
