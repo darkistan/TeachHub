@@ -38,6 +38,8 @@ class ScheduleHandler:
         1. Автоматичне визначення з numerator_start_date (якщо встановлено) - перемикається кожну неділю
         2. Значення current_week (якщо автоматичне визначення недоступне)
         3. За замовчуванням "numerator"
+        
+        Важливо: Якщо автоматичне визначення працює, воно оновлює current_week в БД для синхронізації
         """
         try:
             with get_session() as session:
@@ -47,6 +49,12 @@ class ScheduleHandler:
                     if metadata.numerator_start_date:
                         auto_week = self._calculate_week_type_from_date(metadata.numerator_start_date)
                         if auto_week:
+                            # Оновлюємо current_week в БД для синхронізації між ботом та вебом
+                            if metadata.current_week != auto_week:
+                                metadata.current_week = auto_week
+                                metadata.last_updated = datetime.now()
+                                session.commit()
+                                logger.log_info(f"Автоматично оновлено тип тижня: {auto_week}")
                             return auto_week
                     
                     # Якщо автоматичне визначення недоступне, використовуємо збережене значення
@@ -64,6 +72,12 @@ class ScheduleHandler:
         """
         Автоматичне визначення типу тижня на основі дати початку відліку
         Перемикається кожну неділю автоматично
+        
+        Логіка:
+        - numerator_start_date - дата, коли почався чисельник (неділя)
+        - Обчислюємо різницю в тижнях між поточною неділею та датою початку
+        - Парний номер тижня (0, 2, 4...) = чисельник
+        - Непарний номер тижня (1, 3, 5...) = знаменник
         """
         try:
             numerator_start = datetime.strptime(numerator_start_date, "%Y-%m-%d").date()
@@ -80,10 +94,21 @@ class ScheduleHandler:
             
             # Обчислюємо різницю в тижнях між поточною неділею та датою початку
             days_diff = (current_sunday - numerator_start).days
+            
+            # Перевірка на негативну різницю (якщо дата початку в майбутньому)
+            if days_diff < 0:
+                logger.log_warning(f"Дата початку відліку ({numerator_start_date}) в майбутньому. Використовуємо значення з БД.")
+                return None
+            
             week_number = days_diff // 7
             
             # Парний номер тижня = чисельник, непарний = знаменник
-            return "numerator" if week_number % 2 == 0 else "denominator"
+            result = "numerator" if week_number % 2 == 0 else "denominator"
+            
+            # Діагностичне логування (тільки при зміні типу тижня)
+            logger.log_info(f"Автоматичне визначення типу тижня: дата початку={numerator_start_date}, поточна неділя={current_sunday}, різниця={days_diff} днів, номер тижня={week_number}, результат={result}")
+            
+            return result
         except Exception as e:
             logger.log_error(f"Помилка автоматичного визначення типу тижня: {e}")
             return None

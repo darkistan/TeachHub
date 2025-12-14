@@ -198,7 +198,7 @@
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">День тижня</label>
+                            <label class="form-label">День тижня <span class="text-danger">***</span></label>
                             <select class="form-select" name="day_of_week" required>
                                 {% for day in days_order %}
                                 <option value="{{day}}">{{day_names[day]}}</option>
@@ -206,7 +206,7 @@
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Тип тижня</label>
+                            <label class="form-label">Тип тижня <span class="text-danger">***</span></label>
                             <select class="form-select" name="week_type" required>
                                 <option value="numerator">Чисельник</option>
                                 <option value="denominator">Знаменник</option>
@@ -214,7 +214,7 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Час заняття</label>
+                        <label class="form-label">Час заняття <span class="text-danger">***</span></label>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
                                 <label class="form-label small text-muted">Початок</label>
@@ -241,12 +241,12 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Предмет</label>
+                        <label class="form-label">Предмет <span class="text-danger">***</span></label>
                         <input type="text" class="form-control" name="subject" required>
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Тип заняття</label>
+                            <label class="form-label">Тип заняття <span class="text-danger">***</span></label>
                             <select class="form-select" name="lesson_type" required>
                                 <option value="лекція">Лекція</option>
                                 <option value="практика">Практика</option>
@@ -262,7 +262,7 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Викладач</label>
+                        <label class="form-label">Викладач{% if current_user.is_admin %} <span class="text-danger">***</span>{% endif %}</label>
                         {% if current_user.is_admin %}
                         <select class="form-select" name="teacher_user_id" id="add_teacher_user_id" required>
                             <option value="">Виберіть викладача</option>
@@ -280,11 +280,12 @@
                         <small class="text-muted">ПІБ викладача буде заповнено автоматично</small>
                         {% else %}
                         <input type="hidden" name="teacher_user_id" value="{{current_user.user_id}}">
-                        <input type="text" class="form-control" value="{{current_user.full_name}}" disabled>
+                        <input type="text" class="form-control" value="{{current_user.full_name or current_user.username}}" disabled>
                         <small class="text-muted">Ви додаєте заняття для себе</small>
                         {% endif %}
                     </div>
                     <div class="row">
+                        {% if current_user.is_admin %}
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Телефон викладача</label>
                             <input type="text" class="form-control" name="teacher_phone">
@@ -293,6 +294,12 @@
                             <label class="form-label">Аудиторія</label>
                             <input type="text" class="form-control" name="classroom">
                         </div>
+                        {% else %}
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Аудиторія</label>
+                            <input type="text" class="form-control" name="classroom">
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Google Meet посилання</label>
@@ -331,7 +338,7 @@
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">День тижня</label>
+                            <label class="form-label">День тижня <span class="text-danger">***</span></label>
                             <select class="form-select" name="day_of_week" id="edit_day" required>
                                 {% for day in days_order %}
                                 <option value="{{day}}">{{day_names[day]}}</option>
@@ -339,7 +346,7 @@
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Тип тижня</label>
+                            <label class="form-label">Тип тижня <span class="text-danger">***</span></label>
                             <select class="form-select" name="week_type" id="edit_week_type" required>
                                 <option value="numerator">Чисельник</option>
                                 <option value="denominator">Знаменник</option>
@@ -347,7 +354,7 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Час заняття</label>
+                        <label class="form-label">Час заняття <span class="text-danger">***</span></label>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
                                 <label class="form-label small text-muted">Початок</label>
@@ -374,12 +381,12 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Предмет</label>
+                        <label class="form-label">Предмет <span class="text-danger">***</span></label>
                         <input type="text" class="form-control" name="subject" id="edit_subject" required>
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Тип заняття</label>
+                            <label class="form-label">Тип заняття <span class="text-danger">***</span></label>
                             <select class="form-select" name="lesson_type" id="edit_lesson_type" required>
                                 <option value="лекція">Лекція</option>
                                 <option value="практика">Практика</option>
@@ -396,6 +403,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Викладач</label>
+                        {% if current_user.is_admin %}
                         <select class="form-select" name="teacher_user_id" id="edit_teacher_user_id" required>
                             <option value="">Виберіть викладача</option>
                             {% for teacher in teachers %}
@@ -410,8 +418,14 @@
                         </select>
                         <input type="hidden" name="teacher" id="edit_teacher_name" value="">
                         <small class="text-muted">ПІБ викладача буде заповнено автоматично</small>
+                        {% else %}
+                        <input type="hidden" name="teacher_user_id" id="edit_teacher_user_id" value="{{current_user.user_id}}">
+                        <input type="text" class="form-control" value="{{current_user.full_name or current_user.username}}" disabled>
+                        <small class="text-muted">Ви редагуєте заняття для себе</small>
+                        {% endif %}
                     </div>
                     <div class="row">
+                        {% if current_user.is_admin %}
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Телефон викладача</label>
                             <input type="text" class="form-control" name="teacher_phone" id="edit_teacher_phone">
@@ -420,6 +434,12 @@
                             <label class="form-label">Аудиторія</label>
                             <input type="text" class="form-control" name="classroom" id="edit_classroom">
                         </div>
+                        {% else %}
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Аудиторія</label>
+                            <input type="text" class="form-control" name="classroom" id="edit_classroom">
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Google Meet посилання</label>
@@ -642,19 +662,37 @@ function editLesson(id, day, time, subject, type, teacherUserId, phone, classroo
     parseTimeToInputs('edit', time); // Парсимо час в time picker'и
     document.getElementById('edit_subject').value = subject;
     document.getElementById('edit_lesson_type').value = type;
-    document.getElementById('edit_teacher_user_id').value = teacherUserId || '';
-    document.getElementById('edit_teacher_phone').value = phone;
-    document.getElementById('edit_classroom').value = classroom;
-    document.getElementById('edit_conference_link').value = meet;
-    document.getElementById('edit_exam_type').value = exam;
+    
+    // Поле викладача тільки для адмінів
+    const teacherSelect = document.getElementById('edit_teacher_user_id');
+    if (teacherSelect && teacherSelect.tagName === 'SELECT') {
+        teacherSelect.value = teacherUserId || '';
+        // Оновлюємо ПІБ при відкритті форми
+        if (teacherUserId && teachers[teacherUserId]) {
+            const teacher = teachers[teacherUserId];
+            const teacherNameInput = document.getElementById('edit_teacher_name');
+            if (teacherNameInput) {
+                teacherNameInput.value = teacher.full_name || '@' + teacher.username;
+            }
+        }
+    } else {
+        // Для користувачів - поле приховане, але значення вже встановлене в hidden input
+        if (teacherUserId) {
+            teacherSelect.value = teacherUserId;
+        }
+    }
+    
+    // Телефон викладача тільки для адмінів
+    const phoneInput = document.getElementById('edit_teacher_phone');
+    if (phoneInput) {
+        phoneInput.value = phone || '';
+    }
+    
+    document.getElementById('edit_classroom').value = classroom || '';
+    document.getElementById('edit_conference_link').value = meet || '';
+    document.getElementById('edit_exam_type').value = exam || 'залік';
     document.getElementById('edit_week_type').value = week;
     document.getElementById('edit_group_id').value = groupId || '';
-    
-    // Оновлюємо ПІБ при відкритті форми
-    if (teacherUserId && teachers[teacherUserId]) {
-        const teacher = teachers[teacherUserId];
-        document.getElementById('edit_teacher_name').value = teacher.full_name || '@' + teacher.username;
-    }
     
     new bootstrap.Modal(document.getElementById('editLessonModal')).show();
 }

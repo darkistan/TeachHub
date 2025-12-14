@@ -868,14 +868,23 @@ def add_schedule_entry():
 
 
 @app.route('/schedule/edit/<int:entry_id>', methods=['POST'])
-@admin_required
+@login_required
 def edit_schedule_entry(entry_id):
     """Редагування заняття"""
     try:
         with get_session() as session:
             entry = session.query(ScheduleEntry).filter(ScheduleEntry.id == entry_id).first()
             if entry:
-                teacher_user_id = request.form.get('teacher_user_id', type=int)
+                # Перевіряємо права доступу: користувач може редагувати тільки свої заняття
+                if not current_user.is_admin and entry.teacher_user_id != current_user.user_id:
+                    flash('У вас немає прав для редагування цього заняття!', 'danger')
+                    return redirect(url_for('schedule'))
+                
+                # Для адмінів - беремо з форми, для користувачів - автоматично з поточного користувача
+                if current_user.is_admin:
+                    teacher_user_id = request.form.get('teacher_user_id', type=int)
+                else:
+                    teacher_user_id = current_user.user_id
                 
                 # Отримуємо ПІБ викладача, якщо вказано teacher_user_id
                 teacher_name = request.form.get('teacher', '')
@@ -892,7 +901,9 @@ def edit_schedule_entry(entry_id):
                 entry.lesson_type = request.form['lesson_type']
                 entry.teacher = teacher_name  # Зберігаємо для сумісності
                 entry.teacher_user_id = teacher_user_id
-                entry.teacher_phone = request.form.get('teacher_phone', '')
+                # Телефон викладача тільки для адмінів
+                if current_user.is_admin:
+                    entry.teacher_phone = request.form.get('teacher_phone', '')
                 entry.classroom = request.form.get('classroom', '')
                 entry.conference_link = request.form.get('conference_link', '')
                 entry.exam_type = request.form.get('exam_type', 'залік')
