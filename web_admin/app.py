@@ -606,7 +606,7 @@ def delete_user(user_id):
     except Exception as e:
         flash(f'Помилка видалення користувача: {e}', 'danger')
         import traceback
-        print(f"Traceback: {traceback.format_exc()}")
+        logger.log_error(f"Помилка видалення користувача: {traceback.format_exc()}")
     
     return redirect(url_for('users'))
 
@@ -637,7 +637,7 @@ def send_telegram_message(user_id: int, message: str) -> bool:
         )
         return response.status_code == 200
     except Exception as e:
-        print(f"Помилка відправки повідомлення в Telegram: {e}")
+        logger.log_error(f"Помилка відправки повідомлення в Telegram: {e}")
         return False
 
 
@@ -1237,7 +1237,7 @@ def update_settings():
                         schedule_handler._cache_time = None
                 except Exception as e:
                     # Логуємо помилку, але не блокуємо збереження налаштувань
-                    print(f"Помилка очищення кешу: {e}")
+                    logger.log_error(f"Помилка очищення кешу: {e}")
             
             if not week_changed:
                 flash('Налаштування оновлено!', 'success')

@@ -279,5 +279,3 @@ document.addEventListener('keydown', function(e) {
         }
     }
 });
-
-console.log('Schedule Bot Admin Panel v2.0 loaded successfully');
