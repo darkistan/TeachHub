@@ -342,7 +342,37 @@ def dashboard():
                 # Визначаємо поточний тип тижня
                 from schedule_handler import get_schedule_handler
                 schedule_handler = get_schedule_handler()
-                current_week_type = schedule_handler.get_current_week_type() if schedule_handler else 'numerator'
+                if schedule_handler:
+                    current_week_type = schedule_handler.get_current_week_type()
+                else:
+                    # Якщо handler не ініціалізований, визначаємо тип тижня безпосередньо з БД
+                    # з підтримкою автоматичного визначення через numerator_start_date
+                    metadata_for_week = session.query(ScheduleMetadata).first()
+                    if metadata_for_week:
+                        # Спочатку намагаємося автоматично визначити на основі дати
+                        if metadata_for_week.numerator_start_date:
+                            try:
+                                from schedule_handler import ScheduleHandler
+                                temp_handler = ScheduleHandler()
+                                auto_week = temp_handler._calculate_week_type_from_date(metadata_for_week.numerator_start_date)
+                                if auto_week:
+                                    # Оновлюємо current_week в БД для синхронізації
+                                    if metadata_for_week.current_week != auto_week:
+                                        metadata_for_week.current_week = auto_week
+                                        metadata_for_week.last_updated = datetime.now()
+                                        session.commit()
+                                    current_week_type = auto_week
+                                else:
+                                    # Якщо автоматичне визначення недоступне, використовуємо збережене значення
+                                    current_week_type = metadata_for_week.current_week if metadata_for_week.current_week in ["numerator", "denominator"] else 'numerator'
+                            except Exception as e:
+                                logger.log_error(f"Помилка автоматичного визначення типу тижня: {e}")
+                                current_week_type = metadata_for_week.current_week if metadata_for_week.current_week in ["numerator", "denominator"] else 'numerator'
+                        else:
+                            # Якщо автоматичне визначення недоступне, використовуємо збережене значення
+                            current_week_type = metadata_for_week.current_week if metadata_for_week.current_week in ["numerator", "denominator"] else 'numerator'
+                    else:
+                        current_week_type = 'numerator'
                 
                 # Заняття на сьогодні (показуємо заняття для поточного типу тижня)
                 today_lessons = session.query(ScheduleEntry).filter(
@@ -1658,24 +1688,25 @@ def poll_results(poll_id):
             poll = session.query(Poll).filter(Poll.id == poll_id).first()
             is_anonymous = poll.is_anonymous if poll else False
             
-            # Отримуємо відповіді користувачів
-            responses = session.query(PollResponse, User, PollOption).join(
-                User, PollResponse.user_id == User.user_id
-            ).join(
-                PollOption, PollResponse.option_id == PollOption.id
-            ).filter(
-                PollResponse.poll_id == poll_id
-            ).order_by(PollResponse.responded_at.desc()).all()
-            
+            # Отримуємо відповіді користувачів (тільки для неанонімних опитувань)
             user_responses = []
-            for response, user, option in responses:
-                user_responses.append({
-                    'user_id': user.user_id,
-                    'username': user.username or f"user_{user.user_id}",
-                    'full_name': user.full_name,
-                    'option_text': option.option_text,
-                    'response_time': response.responded_at
-                })
+            if not is_anonymous:
+                responses = session.query(PollResponse, User, PollOption).join(
+                    User, PollResponse.user_id == User.user_id
+                ).join(
+                    PollOption, PollResponse.option_id == PollOption.id
+                ).filter(
+                    PollResponse.poll_id == poll_id
+                ).order_by(PollResponse.responded_at.desc()).all()
+                
+                for response, user, option in responses:
+                    user_responses.append({
+                        'user_id': user.user_id,
+                        'username': user.username or f"user_{user.user_id}",
+                        'full_name': user.full_name,
+                        'option_text': option.option_text,
+                        'response_time': response.responded_at
+                    })
         
         results['is_anonymous'] = is_anonymous
         results['user_responses'] = user_responses
@@ -1804,24 +1835,26 @@ def academic():
                 # Для адмінів - можна вибрати викладача
                 teacher_filter = request.args.get('teacher_id', type=int)
             
-            # Отримуємо викладачів для вибору (тільки для адмінів)
+            # Отримуємо викладачів для вибору
             if current_user.is_admin:
+                # Для адмінів - всі викладачі
                 teachers = session.query(User).all()
                 existing_teacher_ids = {t.user_id for t in teachers}
+                
+                # Також додаємо викладачів, які є в періодах (teacher_user_id), але можуть не бути в списку користувачів
+                teachers_in_periods = session.query(AcademicPeriod.teacher_user_id).distinct().all()
+                teacher_ids_in_periods = {t[0] for t in teachers_in_periods if t[0] is not None}
+                
+                # Додаємо викладачів з періодів, яких немає в списку
+                for teacher_id in teacher_ids_in_periods:
+                    if teacher_id not in existing_teacher_ids:
+                        user = session.query(User).filter(User.user_id == teacher_id).first()
+                        if user:
+                            teachers.append(user)
             else:
-                teachers = []
-                existing_teacher_ids = set()
-            
-            # Також додаємо викладачів, які є в періодах (teacher_user_id), але можуть не бути в списку користувачів
-            teachers_in_periods = session.query(AcademicPeriod.teacher_user_id).distinct().all()
-            teacher_ids_in_periods = {t[0] for t in teachers_in_periods if t[0] is not None}
-            
-            # Додаємо викладачів з періодів, яких немає в списку
-            for teacher_id in teacher_ids_in_periods:
-                if teacher_id not in existing_teacher_ids:
-                    user = session.query(User).filter(User.user_id == teacher_id).first()
-                    if user:
-                        teachers.append(user)
+                # Для звичайних користувачів - тільки поточний користувач
+                teachers = [current_user]
+                existing_teacher_ids = {current_user.user_id}
             
             # Отримуємо періоди з фільтрацією
             # Показуємо тільки періоди з встановленим teacher_user_id (не загальні)

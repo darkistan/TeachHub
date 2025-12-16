@@ -97,15 +97,19 @@
         </div>
         {% endif %}
         
-        {% if results.user_responses %}
         <hr>
         <h5 class="mb-3">
             <i class="bi bi-people"></i> Відповіді користувачів
             {% if results.is_anonymous %}
-            <span class="badge bg-secondary">Анонімне опитування</span>
+            <span class="badge bg-secondary"><i class="bi bi-shield-lock"></i> Анонімне опитування</span>
             {% endif %}
         </h5>
         
+        {% if results.is_anonymous %}
+        <div class="alert alert-info">
+            <i class="bi bi-shield-lock"></i> <strong>Анонімне опитування:</strong> Імена користувачів та їхні відповіді не відображаються для забезпечення конфіденційності. Доступні тільки загальні результати опитування.
+        </div>
+        {% elif results.user_responses %}
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead class="table-light">
@@ -136,6 +140,10 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+        {% else %}
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> Поки що немає відповідей від користувачів.
         </div>
         {% endif %}
     </div>

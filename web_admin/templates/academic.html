@@ -23,7 +23,8 @@
     </div>
 </div>
 
-<!-- Фільтр по викладачу -->
+<!-- Фільтр по викладачу (тільки для адмінів) -->
+{% if current_user.is_admin %}
 <div class="row mb-3">
     <div class="col-12">
         <div class="card">
@@ -54,6 +55,17 @@
 {% if not selected_teacher_id %}
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i> Виберіть викладача для перегляду академічного календаря.
+</div>
+{% endif %}
+{% else %}
+<!-- Для звичайних користувачів - показуємо інформацію про поточного користувача -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="bi bi-person-circle"></i> <strong>Ваш академічний календар:</strong> 
+            {{current_user.full_name if current_user.full_name else current_user.username}}
+        </div>
+    </div>
 </div>
 {% endif %}
 

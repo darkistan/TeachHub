@@ -624,5 +624,22 @@ h3 {
     }
 }
 
+/* Стилі для відображення змісту оголошення */
+.announcement-content-display {
+    white-space: pre-wrap;
+    padding: 15px;
+    border-radius: 5px;
+    margin-top: 10px;
+    background-color: #f8f9fa;
+    color: #212529;
+    border: 1px solid #dee2e6;
+}
+
+[data-bs-theme="dark"] .announcement-content-display {
+    background-color: #343a40;
+    color: #f8f9fa;
+    border-color: #495057;
+}
+
 
 
