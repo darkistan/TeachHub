@@ -3,31 +3,33 @@
 
 {% block content %}
 <div class="row mb-3">
-    <div class="col-md-8">
+    <div class="col-12 col-md-8">
         <h1><i class="bi bi-calendar-range"></i> Академічний календар</h1>
         {% if metadata %}
         <p class="text-muted">Назва навчального закладу: <strong>{{metadata.group_name}}</strong> | Навчальний рік: <strong>{{metadata.academic_year}}</strong></p>
         {% endif %}
     </div>
-    <div class="col-md-4 text-end">
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPeriodModal">
-            <i class="bi bi-plus-circle"></i> Додати період
-        </button>
-        {% if current_user.is_admin %}
-        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#copyAcademicModal">
-            <i class="bi bi-files"></i> Копіювати календар
-        </button>
-        {% endif %}
+    <div class="col-12 col-md-4 text-start text-md-end mt-3 mt-md-0">
+        <div class="d-flex flex-column flex-sm-row gap-2">
+            <button class="btn btn-primary w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#addPeriodModal">
+                <i class="bi bi-plus-circle"></i> <span class="d-none d-sm-inline">Додати період</span><span class="d-sm-none">Додати</span>
+            </button>
+            {% if current_user.is_admin %}
+            <button class="btn btn-success w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#copyAcademicModal">
+                <i class="bi bi-files"></i> <span class="d-none d-sm-inline">Копіювати календар</span><span class="d-sm-none">Копіювати</span>
+            </button>
+            {% endif %}
+        </div>
     </div>
 </div>
 
 <!-- Фільтр по викладачу -->
 <div class="row mb-3">
-    <div class="col-md-12">
+    <div class="col-12">
         <div class="card">
             <div class="card-body">
                 <form method="GET" action="{{url_for('academic')}}" class="row g-3">
-                    <div class="col-md-4">
+                    <div class="col-12 col-md-4">
                         <label class="form-label">Фільтр по викладачу:</label>
                         <select name="teacher_id" class="form-select" onchange="this.form.submit()">
                             <option value="">Виберіть викладача</option>
@@ -39,8 +41,8 @@
                         </select>
                     </div>
                     {% if selected_teacher_id %}
-                    <div class="col-md-2">
-                        <a href="{{url_for('academic')}}" class="btn btn-secondary mt-4">Скинути фільтр</a>
+                    <div class="col-12 col-md-2">
+                        <a href="{{url_for('academic')}}" class="btn btn-secondary w-100 mt-md-4">Скинути фільтр</a>
                     </div>
                     {% endif %}
                 </form>
@@ -66,8 +68,8 @@
                 {% if selected_teacher_id %}
                 {% for period in periods %}
                 <div class="mb-3 p-3 border rounded">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
+                        <div class="flex-grow-1">
                             <h5>{{period.color}} {{period.name}}</h5>
                             <p class="mb-1">
                                 <i class="bi bi-calendar"></i> 
@@ -75,14 +77,14 @@
                             </p>
                             <p class="text-muted mb-0"><small>{{period.description}}</small></p>
                         </div>
-                        <div>
+                        <div class="d-flex flex-column flex-sm-row gap-2 w-100 w-md-auto">
                             <button class="btn btn-sm btn-warning" onclick="editPeriod({{period.id}}, '{{period.period_id}}', '{{period.name}}', '{{period.start_date}}', '{{period.end_date}}', {{period.weeks}}, '{{period.color}}', '{{period.description}}', {{period.teacher_user_id or 'null'}})">
-                                <i class="bi bi-pencil"></i>
+                                <i class="bi bi-pencil"></i> <span class="d-none d-sm-inline">Редагувати</span>
                             </button>
                             <form method="POST" action="{{url_for('delete_academic_period', period_id=period.id)}}" style="display:inline;" onsubmit="return confirm('Видалити період {{period.name}}?');">
                                 <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
-                                <button type="submit" class="btn btn-sm btn-danger">
-                                    <i class="bi bi-trash"></i>
+                                <button type="submit" class="btn btn-sm btn-danger w-100 w-sm-auto">
+                                    <i class="bi bi-trash"></i> <span class="d-none d-sm-inline">Видалити</span>
                                 </button>
                             </form>
                         </div>

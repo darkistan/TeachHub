@@ -540,6 +540,88 @@ h3 {
     .navbar .dropdown-item {
         padding: 0.75rem 1rem;
     }
+    
+    /* Адаптивність таблиць */
+    .table th,
+    .table td {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    /* Компактні кнопки в таблицях */
+    .table .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Адаптивність форм */
+    .form-label {
+        font-size: 0.9rem;
+    }
+    
+    .form-control,
+    .form-select {
+        font-size: 0.9rem;
+    }
+    
+    /* Адаптивність карток */
+    .card-header h5 {
+        font-size: 1rem;
+    }
+    
+    /* Адаптивність модальних вікон */
+    .modal-dialog {
+        max-width: 95%;
+    }
+    
+    .modal-body {
+        padding: 1rem;
+    }
+    
+    /* Приховування другорядних елементів на мобільних */
+    .d-mobile-none {
+        display: none !important;
+    }
+}
+
+/* Додаткові стилі для дуже малих екранів */
+@media (max-width: 576px) {
+    .container-fluid {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+    
+    .card {
+        margin-bottom: 1rem;
+    }
+    
+    .card-body {
+        padding: 0.75rem;
+    }
+    
+    .btn {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.8rem;
+    }
+    
+    /* Компактніше відображення таблиць */
+    .table-responsive {
+        font-size: 0.8rem;
+    }
+    
+    .table th,
+    .table td {
+        padding: 0.4rem 0.3rem;
+    }
+    
+    /* Вертикальне розташування кнопок */
+    .d-flex.gap-2 {
+        flex-direction: column;
+    }
+    
+    .d-flex.gap-2 > * {
+        width: 100%;
+    }
 }
 
 

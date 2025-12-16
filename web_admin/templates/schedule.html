@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="row mb-3">
-    <div class="col-md-6">
+    <div class="col-12 col-md-6">
         <h1><i class="bi bi-calendar3"></i> Управління розкладом</h1>
         {% if metadata %}
         <p class="text-muted">Поточний тиждень: 
@@ -11,10 +11,10 @@
         </p>
         {% endif %}
     </div>
-    <div class="col-md-6 text-end">
+    <div class="col-12 col-md-6 text-start text-md-end mt-3 mt-md-0">
         <div class="mb-2">
-            <label class="form-label me-2">Виберіть викладача:</label>
-            <select class="form-select d-inline-block" style="width: auto;" onchange="filterByTeacher(this.value)" required>
+            <label class="form-label d-block d-md-inline me-2">Виберіть викладача:</label>
+            <select class="form-select d-inline-block w-100 w-md-auto" onchange="filterByTeacher(this.value)" required>
                 <option value="">-- Виберіть викладача --</option>
                 {% for teacher in teachers %}
                 <option value="{{teacher.user_id}}" {% if selected_teacher_id == teacher.user_id %}selected{% endif %}>
@@ -27,13 +27,13 @@
                 {% endfor %}
             </select>
         </div>
-        <div>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addLessonModal">
-                <i class="bi bi-plus-circle"></i> Додати заняття
+        <div class="d-flex flex-column flex-sm-row gap-2 mt-2">
+            <button class="btn btn-primary w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#addLessonModal">
+                <i class="bi bi-plus-circle"></i> <span class="d-none d-sm-inline">Додати заняття</span><span class="d-sm-none">Додати</span>
             </button>
             {% if current_user.is_admin %}
-            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#copyScheduleModal">
-                <i class="bi bi-files"></i> Копіювати розклад
+            <button class="btn btn-success w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#copyScheduleModal">
+                <i class="bi bi-files"></i> <span class="d-none d-sm-inline">Копіювати розклад</span><span class="d-sm-none">Копіювати</span>
             </button>
             {% endif %}
         </div>
@@ -63,40 +63,50 @@
             <table class="table table-hover">
                 <thead class="table-light">
                     <tr>
-                        <th>Час</th>
+                        <th class="d-none d-md-table-cell">Час</th>
                         <th>Предмет</th>
-                        <th>Тип</th>
-                        <th>Група</th>
-                        <th>Викладач</th>
-                        <th>Телефон</th>
-                        <th>Google Meet</th>
-                        <th>Контроль</th>
+                        <th class="d-none d-lg-table-cell">Тип</th>
+                        <th class="d-none d-lg-table-cell">Група</th>
+                        <th class="d-none d-xl-table-cell">Викладач</th>
+                        <th class="d-none d-xl-table-cell">Телефон</th>
+                        <th class="d-none d-lg-table-cell">Google Meet</th>
+                        <th class="d-none d-xl-table-cell">Контроль</th>
                         <th>Дії</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for entry in schedule[day]['numerator'] %}
                     <tr>
-                        <td><strong>{{entry.time}}</strong></td>
-                        <td>{{entry.subject}}</td>
-                        <td><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td class="d-none d-md-table-cell"><strong>{{entry.time}}</strong></td>
                         <td>
+                            <strong class="d-md-none">{{entry.time}} - </strong>{{entry.subject}}
+                            <div class="d-md-none mt-1">
+                                <span class="badge bg-info">{{entry.lesson_type}}</span>
+                                {% if entry.group_name %}
+                                <span class="badge bg-secondary">{{entry.group_name}}</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="d-none d-lg-table-cell"><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td class="d-none d-lg-table-cell">
                             {% if entry.group_name %}
                                 <span class="badge bg-secondary">{{entry.group_name}}</span>
                             {% else %}
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td>{{entry.teacher_display if entry.teacher_display else entry.teacher}}</td>
-                        <td><small>{{entry.teacher_phone}}</small></td>
-                        <td>
+                        <td class="d-none d-xl-table-cell">{{entry.teacher_display if entry.teacher_display else entry.teacher}}</td>
+                        <td class="d-none d-xl-table-cell"><small>{{entry.teacher_phone}}</small></td>
+                        <td class="d-none d-lg-table-cell">
                             {% if entry.conference_link %}
                             <a href="{{entry.conference_link}}" target="_blank" class="btn btn-sm btn-outline-success">
                                 <i class="bi bi-camera-video"></i>
                             </a>
+                            {% else %}
+                            <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
+                        <td class="d-none d-xl-table-cell"><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
                         <td>
                             <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}', {{entry.group_id or 'null'}})">
                                 <i class="bi bi-pencil"></i>
@@ -110,7 +120,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="9" class="text-center text-muted">Занять немає</td></tr>
+                    <tr><td colspan="2" class="text-center text-muted">Занять немає</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -122,40 +132,50 @@
             <table class="table table-hover">
                 <thead class="table-light">
                     <tr>
-                        <th>Час</th>
+                        <th class="d-none d-md-table-cell">Час</th>
                         <th>Предмет</th>
-                        <th>Тип</th>
-                        <th>Група</th>
-                        <th>Викладач</th>
-                        <th>Телефон</th>
-                        <th>Google Meet</th>
-                        <th>Контроль</th>
+                        <th class="d-none d-lg-table-cell">Тип</th>
+                        <th class="d-none d-lg-table-cell">Група</th>
+                        <th class="d-none d-xl-table-cell">Викладач</th>
+                        <th class="d-none d-xl-table-cell">Телефон</th>
+                        <th class="d-none d-lg-table-cell">Google Meet</th>
+                        <th class="d-none d-xl-table-cell">Контроль</th>
                         <th>Дії</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for entry in schedule[day]['denominator'] %}
                     <tr>
-                        <td><strong>{{entry.time}}</strong></td>
-                        <td>{{entry.subject}}</td>
-                        <td><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td class="d-none d-md-table-cell"><strong>{{entry.time}}</strong></td>
                         <td>
+                            <strong class="d-md-none">{{entry.time}} - </strong>{{entry.subject}}
+                            <div class="d-md-none mt-1">
+                                <span class="badge bg-info">{{entry.lesson_type}}</span>
+                                {% if entry.group_name %}
+                                <span class="badge bg-secondary">{{entry.group_name}}</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="d-none d-lg-table-cell"><span class="badge bg-info">{{entry.lesson_type}}</span></td>
+                        <td class="d-none d-lg-table-cell">
                             {% if entry.group_name %}
                                 <span class="badge bg-secondary">{{entry.group_name}}</span>
                             {% else %}
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td>{{entry.teacher_display if entry.teacher_display else entry.teacher}}</td>
-                        <td><small>{{entry.teacher_phone}}</small></td>
-                        <td>
+                        <td class="d-none d-xl-table-cell">{{entry.teacher_display if entry.teacher_display else entry.teacher}}</td>
+                        <td class="d-none d-xl-table-cell"><small>{{entry.teacher_phone}}</small></td>
+                        <td class="d-none d-lg-table-cell">
                             {% if entry.conference_link %}
                             <a href="{{entry.conference_link}}" target="_blank" class="btn btn-sm btn-outline-success">
                                 <i class="bi bi-camera-video"></i>
                             </a>
+                            {% else %}
+                            <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
+                        <td class="d-none d-xl-table-cell"><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
                         <td>
                             <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}', {{entry.group_id or 'null'}})">
                                 <i class="bi bi-pencil"></i>
@@ -169,7 +189,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="9" class="text-center text-muted">Занять немає</td></tr>
+                    <tr><td colspan="2" class="text-center text-muted">Занять немає</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
