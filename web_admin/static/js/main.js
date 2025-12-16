@@ -89,7 +89,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const dropdownItems = document.querySelectorAll('.dropdown-item');
     dropdownItems.forEach(item => {
         const href = item.getAttribute('href');
-        if (href === currentPath || (href !== '/' && currentPath.startsWith(href))) {
+        // Для dropdown items перевіряємо тільки точне співпадіння, щоб уникнути підсвічування батьківських шляхів
+        if (href === currentPath) {
             item.classList.add('active');
             // Підсвічуємо батьківський dropdown
             const dropdown = item.closest('.dropdown');

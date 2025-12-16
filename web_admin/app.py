@@ -9,7 +9,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_wtf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_limiter import Limiter
@@ -2257,6 +2257,138 @@ def stats():
     except Exception as e:
         flash(f'Помилка завантаження статистики: {e}', 'danger')
         return render_template('stats.html', command_stats=[], daily_activity=[], user_activity=[], general_stats={}, teacher_workload=[])
+
+
+@app.route('/admin/schedule-report')
+@admin_required
+def schedule_report():
+    """Звіт по розкладу - дашборд з заняттями користувачів"""
+    try:
+        with get_session() as session:
+            # Отримуємо всіх користувачів (викладачів) - без фільтрів, показуємо всіх
+            teachers = session.query(User).filter(User.role == 'user').order_by(User.full_name, User.username).all()
+            
+            # Отримуємо всі групи (для відображення назв груп)
+            groups = session.query(Group).order_by(Group.name).all()
+            
+            # Мапінг днів тижня
+            day_names = {
+                'monday': 'Понеділок',
+                'tuesday': 'Вівторок',
+                'wednesday': 'Середа',
+                'thursday': 'Четвер',
+                'friday': 'П\'ятниця',
+                'saturday': 'Субота',
+                'sunday': 'Неділя'
+            }
+            days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+            
+            # Визначаємо поточний день та час для фільтрації "зараз"
+            weekday_map = {
+                0: 'monday', 1: 'tuesday', 2: 'wednesday', 3: 'thursday',
+                4: 'friday', 5: 'saturday', 6: 'sunday'
+            }
+            current_day = weekday_map[datetime.now().weekday()]
+            current_time = datetime.now().time()
+            
+            # Визначаємо поточний тип тижня
+            from schedule_handler import get_schedule_handler
+            schedule_handler = get_schedule_handler()
+            if schedule_handler:
+                current_week_type = schedule_handler.get_current_week_type()
+            else:
+                metadata_for_week = session.query(ScheduleMetadata).first()
+                if metadata_for_week and metadata_for_week.current_week in ["numerator", "denominator"]:
+                    current_week_type = metadata_for_week.current_week
+                else:
+                    current_week_type = 'numerator'
+            
+            # Для кожного користувача завантажуємо його заняття
+            users_data = []
+            for teacher in teachers:
+                # Запит для заняття користувача
+                entries_query = session.query(ScheduleEntry).filter(
+                    ScheduleEntry.teacher_user_id == teacher.user_id
+                )
+                
+                # Фільтр: тільки поточний день та поточний тип тижня
+                entries_query = entries_query.filter(
+                    ScheduleEntry.day_of_week == current_day,
+                    ScheduleEntry.week_type == current_week_type
+                )
+                
+                entries = entries_query.order_by(ScheduleEntry.time).all()
+                
+                # Фільтруємо заняття по поточному часу (тільки ті, що зараз проходять)
+                current_entries = []
+                for entry in entries:
+                    try:
+                        # Парсимо час заняття (формат "HH:MM-HH:MM")
+                        if '-' in entry.time:
+                            start_str, end_str = entry.time.split('-')
+                            start_time = datetime.strptime(start_str.strip(), "%H:%M").time()
+                            end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                            
+                            # Перевіряємо, чи поточний час знаходиться між початком та кінцем
+                            if start_time <= current_time <= end_time:
+                                current_entries.append(entry)
+                    except (ValueError, AttributeError):
+                        # Якщо не вдалося розпарсити час, пропускаємо
+                        continue
+                
+                entries = current_entries
+                
+                # Додаємо інформацію про групи до entries
+                groups_dict = {g.id: g for g in groups}
+                for entry in entries:
+                    if entry.group_id and entry.group_id in groups_dict:
+                        entry.group_name = groups_dict[entry.group_id].name
+                    else:
+                        entry.group_name = None
+                
+                # Групуємо заняття по днях та типу тижня (для поточного дня)
+                schedule_data = {}
+                for day in days_order:
+                    schedule_data[day] = {
+                        'numerator': [],
+                        'denominator': []
+                    }
+                
+                # Додаємо заняття тільки для поточного дня
+                for entry in entries:
+                    if entry.day_of_week in schedule_data:
+                        schedule_data[entry.day_of_week][entry.week_type].append(entry)
+                
+                users_data.append({
+                    'teacher': teacher,
+                    'schedule': schedule_data,
+                    'entries_count': len(entries)
+                })
+            
+            # Метадані для відображення
+            metadata = session.query(ScheduleMetadata).first()
+            
+            return render_template('schedule_report.html',
+                                 users_data=users_data,
+                                 teachers=teachers,
+                                 groups=groups,
+                                 day_names=day_names,
+                                 days_order=days_order,
+                                 metadata=metadata,
+                                 current_day=current_day,
+                                 current_week_type=current_week_type)
+    except Exception as e:
+        logger.log_error(f"Помилка завантаження звіту по розкладу: {e}")
+        flash(f'Помилка завантаження звіту: {e}', 'danger')
+        return render_template('schedule_report.html',
+                             users_data=[],
+                             teachers=[],
+                             groups=[],
+                             day_names={},
+                             days_order=[],
+                             metadata=None,
+                             current_day=None,
+                             current_week_type=None)
 
 
 # Favicon handler (ігноруємо запити на favicon.ico)

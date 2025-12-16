@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Звіт по розкладу - TeachHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-calendar-week"></i> Звіт по розкладу</h1>
+        <p class="text-muted">Перегляд поточного розкладу всіх користувачів</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary" onclick="refreshDashboard()" id="refreshBtn">
+            <i class="bi bi-arrow-clockwise"></i> Оновити
+        </button>
+    </div>
+</div>
+
+<!-- Інформація про поточний час -->
+<div class="alert alert-info mb-3">
+    <i class="bi bi-clock"></i> <strong>Показуються тільки заняття, які проходять зараз:</strong>
+    {% if current_day %}
+    <span class="badge bg-primary ms-2">{{day_names[current_day]}}</span>
+    {% endif %}
+    {% if current_week_type %}
+    <span class="badge bg-{{'primary' if current_week_type == 'numerator' else 'warning'}} ms-2">
+        {{'Чисельник' if current_week_type == 'numerator' else 'Знаменник'}}
+    </span>
+    {% endif %}
+    <span class="badge bg-secondary ms-2" id="current-time"></span>
+</div>
+
+<!-- Дашборд з плашками викладачів -->
+{% if users_data %}
+<div class="row g-3">
+    {% set color_classes = ['bg-primary', 'bg-success', 'bg-warning', 'bg-info', 'bg-danger', 'bg-secondary', 'bg-dark'] %}
+    {% for user_data in users_data %}
+        {% if user_data.entries_count > 0 %}
+            {% set current_entries = [] %}
+            {% if current_day and current_week_type %}
+                {% for entry in user_data.schedule[current_day][current_week_type] %}
+                    {% if current_entries.append(entry) %}{% endif %}
+                {% endfor %}
+            {% endif %}
+            
+            {% if current_entries|length > 0 %}
+                {% set entry = current_entries[0] %}
+                {% set color_index = loop.index0 % color_classes|length %}
+                {% set card_color = color_classes[color_index] %}
+                <div class="col-md-4 col-sm-6">
+                    <div class="card {{card_color}} text-white shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-start mb-2">
+                                <i class="bi bi-person-circle fs-3 me-2 opacity-75"></i>
+                                <div class="flex-grow-1">
+                                    <h6 class="card-title mb-1 fw-bold">
+                                        {% if user_data.teacher.full_name %}
+                                            {{user_data.teacher.full_name}}
+                                        {% else %}
+                                            @{{user_data.teacher.username}}
+                                        {% endif %}
+                                    </h6>
+                                    <small class="opacity-75">@{{user_data.teacher.username}}</small>
+                                </div>
+                            </div>
+                            <hr class="my-2 opacity-50">
+                            <div class="mb-2">
+                                <h5 class="mb-1 fw-bold">{{entry.subject}}</h5>
+                                <div class="d-flex flex-wrap gap-1 mb-2">
+                                    <span class="badge bg-light text-dark">
+                                        <i class="bi bi-clock"></i> {{entry.time}}
+                                    </span>
+                                    {% if entry.lesson_type %}
+                                    <span class="badge bg-light text-dark">
+                                        {{entry.lesson_type}}
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="small">
+                                {% if entry.group_name %}
+                                <div class="mb-1">
+                                    <i class="bi bi-people"></i> <strong>Група:</strong> {{entry.group_name}}
+                                </div>
+                                {% endif %}
+                                {% if entry.classroom %}
+                                <div>
+                                    <i class="bi bi-building"></i> <strong>Аудиторія:</strong> {{entry.classroom}}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+</div>
+{% if users_data|selectattr('entries_count', 'equalto', 0)|list|length > 0 %}
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Деякі викладачі не мають поточних занять.
+        </div>
+    </div>
+</div>
+{% endif %}
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> На даний момент немає активних занять.
+</div>
+{% endif %}
+
+<script>
+// Оновлення поточного часу кожну хвилину
+function updateCurrentTime() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const timeElement = document.getElementById('current-time');
+    if (timeElement) {
+        timeElement.textContent = hours + ':' + minutes;
+    }
+}
+
+// Оновлюємо час при завантаженні та кожну хвилину
+updateCurrentTime();
+setInterval(updateCurrentTime, 60000);
+
+function refreshDashboard() {
+    const btn = document.getElementById('refreshBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Оновлення...';
+    
+    // Оновлюємо сторінку
+    window.location.reload();
+}
+</script>
+{% endblock %}
+
