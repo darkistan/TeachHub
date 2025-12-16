@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Редагувати опитування - TeachHub Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <h1><i class="bi bi-pencil"></i> Редагувати опитування</h1>
+        <p class="text-muted">ID: {{poll.id}}</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{url_for('polls')}}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Назад до опитувань
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Інформація</h5>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Ви можете редагувати опитування тільки до його відправки користувачам.
+            Після відправки редагування буде неможливим.
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-pencil-square"></i> Редагування опитування</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{url_for('edit_poll', poll_id=poll.id)}}">
+            <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
+            
+            <div class="mb-3">
+                <label class="form-label">Питання опитування <span class="text-danger">*</span></label>
+                <textarea class="form-control" name="question" rows="3" required placeholder="Введіть питання опитування...">{{poll.question}}</textarea>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Варіанти відповіді <span class="text-danger">*</span></label>
+                <textarea class="form-control" name="options" rows="6" required placeholder="Введіть варіанти відповіді, кожен з нового рядка (мінімум 2, максимум 10)&#10;&#10;Приклад:&#10;Так&#10;Ні&#10;Не знаю">{{options_text}}</textarea>
+                <small class="form-text text-muted">Кожен варіант відповіді з нового рядка. Мінімум 2, максимум 10 варіантів.</small>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Термін дії опитування (опціонально)</label>
+                <input type="datetime-local" class="form-control" name="expires_at" value="{{expires_at_str}}">
+                <small class="form-text text-muted">Якщо встановлено, опитування автоматично закриється в цей час та відправить звіт користувачам.</small>
+            </div>
+            
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_anonymous" id="is_anonymous" value="1" {% if poll.is_anonymous %}checked{% endif %}>
+                    <label class="form-check-label" for="is_anonymous">
+                        <i class="bi bi-shield-lock"></i> Анонімне опитування
+                    </label>
+                    <small class="form-text text-muted d-block">При анонімному опитуванні імена користувачів не будуть показуватися в звіті, але адмін зможе переглянути відповіді конкретних користувачів.</small>
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-between">
+                <a href="{{url_for('polls')}}" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Скасувати
+                </a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-circle"></i> Зберегти зміни
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

@@ -6,13 +6,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
     setTheme(savedTheme);
     
-    // Обробник перемикача
-    document.getElementById('theme-toggle').addEventListener('click', function() {
-        const currentTheme = document.documentElement.getAttribute('data-bs-theme');
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-        setTheme(newTheme);
-        localStorage.setItem('theme', newTheme);
-    });
+    // Обробник перемикача (перевіряємо наявність елемента)
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', function() {
+            const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+            localStorage.setItem('theme', newTheme);
+        });
+    }
 });
 
 function setTheme(theme) {
@@ -20,10 +23,12 @@ function setTheme(theme) {
     document.body.setAttribute('data-bs-theme', theme);
     
     const icon = document.getElementById('theme-icon');
-    if (theme === 'dark') {
-        icon.className = 'bi bi-sun-fill';
-    } else {
-        icon.className = 'bi bi-moon-stars-fill';
+    if (icon) {
+        if (theme === 'dark') {
+            icon.className = 'bi bi-sun-fill';
+        } else {
+            icon.className = 'bi bi-moon-stars-fill';
+        }
     }
 }
 
@@ -60,8 +65,42 @@ async function updateAlertStatus() {
 
 // Оновлюємо статус при завантаженні та кожну хвилину
 document.addEventListener('DOMContentLoaded', function() {
-    updateAlertStatus();
-    setInterval(updateAlertStatus, 60000); // Кожну хвилину
+    // Перевіряємо наявність елемента статусу тривоги
+    if (document.getElementById('alert-status')) {
+        updateAlertStatus();
+        setInterval(updateAlertStatus, 60000); // Кожну хвилину
+    }
+});
+
+// ========== ACTIVE NAVIGATION HIGHLIGHTING ==========
+document.addEventListener('DOMContentLoaded', function() {
+    const currentPath = window.location.pathname;
+    const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+    
+    navLinks.forEach(link => {
+        const href = link.getAttribute('href');
+        // Перевіряємо точне співпадіння або початок шляху
+        if (href === currentPath || (href !== '/' && currentPath.startsWith(href))) {
+            link.classList.add('active');
+        }
+    });
+    
+    // Також перевіряємо dropdown items
+    const dropdownItems = document.querySelectorAll('.dropdown-item');
+    dropdownItems.forEach(item => {
+        const href = item.getAttribute('href');
+        if (href === currentPath || (href !== '/' && currentPath.startsWith(href))) {
+            item.classList.add('active');
+            // Підсвічуємо батьківський dropdown
+            const dropdown = item.closest('.dropdown');
+            if (dropdown) {
+                const dropdownToggle = dropdown.querySelector('.dropdown-toggle');
+                if (dropdownToggle) {
+                    dropdownToggle.classList.add('active');
+                }
+            }
+        }
+    });
 });
 
 // ========== AUTO-DISMISS ALERTS ==========
@@ -167,61 +206,76 @@ function createToastContainer() {
     return container;
 }
 
-// ========== ACTIVE NAVIGATION HIGHLIGHT ==========
+// ========== FORM LOADING INDICATORS ==========
 document.addEventListener('DOMContentLoaded', function() {
-    // Мапінг URL до ID навігаційних пунктів
-    const navMapping = {
-        '/': 'dashboard',
-        '/dashboard': 'dashboard',
-        '/users': 'users',
-        '/groups': 'groups',
-        '/schedule': 'schedule',
-        '/academic': 'academic',
-        '/announcements': 'announcements',
-        '/polls': 'polls',
-        '/logs': 'logs',
-        '/stats': 'stats',
-        '/settings': 'settings',
-        '/contact-developer': 'contact-developer'
-    };
+    // Знаходимо всі форми
+    const forms = document.querySelectorAll('form');
     
-    // Отримуємо поточний шлях
-    const currentPath = window.location.pathname;
+    forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
+            
+            if (submitBtn && !form.classList.contains('no-loading')) {
+                // Додаємо індикатор завантаження
+                const originalText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.classList.add('btn-loading');
+                
+                // Додаємо spinner
+                if (!submitBtn.querySelector('.spinner-border')) {
+                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ' + originalText;
+                }
+                
+                // Додаємо клас до форми для візуального ефекту
+                form.classList.add('form-loading');
+                
+                // Якщо форма не відправляється (помилка валідації), повертаємо стан
+                setTimeout(() => {
+                    if (!form.dataset.submitted) {
+                        submitBtn.disabled = false;
+                        submitBtn.classList.remove('btn-loading');
+                        submitBtn.innerHTML = originalText;
+                        form.classList.remove('form-loading');
+                    }
+                }, 100);
+            }
+            
+            // Позначаємо форму як відправлену
+            form.dataset.submitted = 'true';
+        });
+    });
+});
+
+// ========== KEYBOARD SHORTCUTS ==========
+document.addEventListener('keydown', function(e) {
+    // Esc - закрити модальні вікна
+    if (e.key === 'Escape') {
+        const modals = document.querySelectorAll('.modal.show');
+        modals.forEach(modal => {
+            const bsModal = bootstrap.Modal.getInstance(modal);
+            if (bsModal) {
+                bsModal.hide();
+            }
+        });
+    }
     
-    // Знаходимо відповідний пункт меню
-    let activeNavId = null;
-    for (const [path, navId] of Object.entries(navMapping)) {
-        if (currentPath === path || currentPath.startsWith(path + '/')) {
-            activeNavId = navId;
-            break;
+    // Ctrl+K або Cmd+K - фокус на пошук (якщо є)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="search"], input[placeholder*="Пошук"], input[id*="search"]');
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
         }
     }
     
-    // Підсвічуємо активний пункт
-    if (activeNavId) {
-        const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
-        navLinks.forEach(link => {
-            const href = link.getAttribute('href');
-            if (href && (href.includes(activeNavId) || 
-                (activeNavId === 'dashboard' && (href === '/' || href.includes('dashboard'))))) {
-                link.classList.add('active');
-            }
-        });
-        
-        // Для dropdown меню
-        if (activeNavId === 'announcements' || activeNavId === 'polls') {
-            const commDropdown = document.getElementById('communicationsDropdown');
-            if (commDropdown) {
-                commDropdown.classList.add('active');
-            }
-        }
-        
-        if (activeNavId === 'logs' || activeNavId === 'stats' || 
-            activeNavId === 'settings' || activeNavId === 'contact-developer') {
-            const adminDropdown = document.getElementById('adminDropdown');
-            if (adminDropdown) {
-                adminDropdown.classList.add('active');
-            }
+    // / - фокус на пошук (якщо не в input/textarea)
+    if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="search"], input[placeholder*="Пошук"], input[id*="search"]');
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
         }
     }
 });

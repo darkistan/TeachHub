@@ -89,6 +89,77 @@ class PollManager:
             logger.log_error(f"Помилка створення опитування: {e}")
             return None
     
+    def update_poll(
+        self,
+        poll_id: int,
+        question: str,
+        options: List[str],
+        expires_at: Optional[datetime] = None,
+        is_anonymous: bool = False
+    ) -> bool:
+        """
+        Оновлення опитування (тільки якщо воно ще не відправлено користувачам)
+        
+        Args:
+            poll_id: ID опитування
+            question: Питання опитування
+            options: Список варіантів відповіді (мінімум 2, максимум 10)
+            expires_at: Термін дії опитування
+            is_anonymous: Чи є опитування анонімним
+            
+        Returns:
+            True якщо опитування успішно оновлено
+        """
+        try:
+            if len(options) < 2:
+                logger.log_error("Опитування має містити мінімум 2 варіанти відповіді")
+                return False
+            
+            if len(options) > 10:
+                logger.log_error("Опитування має містити максимум 10 варіантів відповіді")
+                return False
+            
+            with get_session() as session:
+                # Перевіряємо чи опитування існує
+                poll = session.query(Poll).filter(Poll.id == poll_id).first()
+                if not poll:
+                    logger.log_error(f"Опитування {poll_id} не знайдено")
+                    return False
+                
+                # Перевіряємо чи опитування вже відправлено
+                if poll.sent_to_users:
+                    logger.log_error(f"Опитування {poll_id} вже відправлено користувачам, редагування неможливе")
+                    return False
+                
+                # Перевіряємо чи опитування не закрите
+                if poll.is_closed:
+                    logger.log_error(f"Опитування {poll_id} вже закрите, редагування неможливе")
+                    return False
+                
+                # Оновлюємо питання
+                poll.question = question
+                poll.expires_at = expires_at
+                poll.is_anonymous = is_anonymous
+                
+                # Видаляємо старі варіанти відповіді
+                session.query(PollOption).filter(PollOption.poll_id == poll_id).delete()
+                
+                # Додаємо нові варіанти відповіді
+                for order, option_text in enumerate(options, start=1):
+                    option = PollOption(
+                        poll_id=poll.id,
+                        option_text=option_text.strip(),
+                        option_order=order
+                    )
+                    session.add(option)
+                
+                session.commit()
+                logger.log_info(f"Опитування ID {poll_id} оновлено")
+                return True
+        except Exception as e:
+            logger.log_error(f"Помилка оновлення опитування: {e}")
+            return False
+    
     def get_active_polls(self) -> List[Dict[str, Any]]:
         """
         Отримання списку активних (незакритих) опитувань

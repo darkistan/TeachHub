@@ -27,7 +27,7 @@ from air_alert import get_air_alert_manager
 from notification_manager import get_notification_manager
 from schedule_analyzer import ScheduleAnalyzer
 from database import init_database, get_session
-from models import ScheduleEntry
+from models import ScheduleEntry, PollOption
 from poll_manager import get_poll_manager
 from datetime import datetime
 
@@ -1086,17 +1086,56 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 option_id = int(parts[3])
                 
                 poll_manager = get_poll_manager()
+                
                 if poll_manager.add_poll_response(poll_id, option_id, user_id):
-                    await query.answer("✅ Ваш голос зараховано!", show_alert=False)
-                    # Оновлюємо повідомлення з підтвердженням
+                    # Показуємо помітне підтвердження
+                    await query.answer("✅ Ваш голос зараховано!", show_alert=True)
+                    
+                    # Оновлюємо кнопки, щоб показати обрану відповідь
                     try:
-                        await query.edit_message_text(
-                            query.message.text + "\n\n✅ <b>Ваш голос зараховано!</b>",
-                            parse_mode='HTML'
-                        )
-                    except:
-                        # Якщо не вдалося оновити, просто відповідаємо
-                        pass
+                        with get_session() as session:
+                            # Отримуємо всі варіанти відповіді для цього опитування
+                            options = session.query(PollOption).filter(
+                                PollOption.poll_id == poll_id
+                            ).order_by(PollOption.option_order).all()
+                            
+                            # Створюємо нові кнопки з позначкою обраної відповіді
+                            keyboard_buttons = []
+                            for option in options:
+                                if option.id == option_id:
+                                    # Обрана відповідь - показуємо помітну позначку
+                                    button_text = f"✅ ✓ {option.option_text} ✓ (Відправлено)"
+                                else:
+                                    # Інші відповіді - залишаємо як є, але можна додати індикацію
+                                    button_text = f"✅ {option.option_text}"
+                                
+                                # Кнопки залишаються активними (користувач може змінити вибір)
+                                keyboard_buttons.append([{
+                                    'text': button_text,
+                                    'callback_data': f"poll_vote_{poll_id}_{option.id}"
+                                }])
+                            
+                            # Оновлюємо повідомлення з новими кнопками
+                            # Отримуємо оригінальний текст (може бути text або caption для медіа)
+                            original_text = query.message.text or query.message.caption or ""
+                            
+                            # Додаємо помітне підтвердження до тексту
+                            # Перевіряємо, чи вже є підтвердження в тексті
+                            if "✅ Ваш голос зараховано" not in original_text:
+                                confirmation_text = "\n\n━━━━━━━━━━━━━━━━━━━━\n✅ <b>ВАШ ГОЛОС ЗАРАХОВАНО!</b> ✅\n━━━━━━━━━━━━━━━━━━━━"
+                                new_text = original_text + confirmation_text
+                            else:
+                                new_text = original_text
+                            
+                            await query.edit_message_text(
+                                new_text,
+                                parse_mode='HTML',
+                                reply_markup=InlineKeyboardMarkup(keyboard_buttons)
+                            )
+                            
+                    except Exception as e:
+                        logger.log_warning(f"Не вдалося оновити повідомлення з опитуванням: {e}")
+                        # Якщо не вдалося оновити, хоча б показуємо alert
                 else:
                     await query.answer("❌ Помилка збереження голосу. Можливо, опитування вже закрите.", show_alert=True)
             except (ValueError, IndexError) as e:

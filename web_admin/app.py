@@ -1551,6 +1551,96 @@ def create_poll():
     return redirect(url_for('polls'))
 
 
+@app.route('/polls/<int:poll_id>/edit', methods=['GET', 'POST'])
+@admin_required
+def edit_poll(poll_id):
+    """Редагування опитування (тільки якщо воно ще не відправлено)"""
+    try:
+        with get_session() as session:
+            poll = session.query(Poll).filter(Poll.id == poll_id).first()
+            if not poll:
+                flash('Опитування не знайдено!', 'warning')
+                return redirect(url_for('polls'))
+            
+            # Перевіряємо чи опитування вже відправлено
+            if poll.sent_to_users:
+                flash('Неможливо редагувати опитування, яке вже відправлено користувачам!', 'warning')
+                return redirect(url_for('polls'))
+            
+            # Перевіряємо чи опитування не закрите
+            if poll.is_closed:
+                flash('Неможливо редагувати закрите опитування!', 'warning')
+                return redirect(url_for('polls'))
+            
+            if request.method == 'POST':
+                question = request.form.get('question', '').strip()
+                options_text = request.form.get('options', '').strip()
+                expires_at_str = request.form.get('expires_at', '').strip()
+                is_anonymous = request.form.get('is_anonymous') == '1'
+                
+                if not question:
+                    flash('Питання опитування не може бути порожнім!', 'warning')
+                    return redirect(url_for('edit_poll', poll_id=poll_id))
+                
+                # Парсимо варіанти відповіді (кожен з нового рядка)
+                options = [opt.strip() for opt in options_text.split('\n') if opt.strip()]
+                
+                if len(options) < 2:
+                    flash('Потрібно мінімум 2 варіанти відповіді!', 'warning')
+                    return redirect(url_for('edit_poll', poll_id=poll_id))
+                
+                if len(options) > 10:
+                    flash('Максимум 10 варіантів відповіді!', 'warning')
+                    return redirect(url_for('edit_poll', poll_id=poll_id))
+                
+                # Парсимо термін дії
+                expires_at = None
+                if expires_at_str:
+                    try:
+                        expires_at = datetime.strptime(expires_at_str, '%Y-%m-%dT%H:%M')
+                    except ValueError:
+                        try:
+                            expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M')
+                        except ValueError:
+                            flash('Невірний формат дати терміну дії!', 'warning')
+                            return redirect(url_for('edit_poll', poll_id=poll_id))
+                
+                poll_manager = get_poll_manager()
+                if poll_manager.update_poll(
+                    poll_id=poll_id,
+                    question=question,
+                    options=options,
+                    expires_at=expires_at,
+                    is_anonymous=is_anonymous
+                ):
+                    flash(f'Опитування ID {poll_id} успішно оновлено!', 'success')
+                else:
+                    flash('Помилка оновлення опитування!', 'danger')
+                
+                return redirect(url_for('polls'))
+            else:
+                # GET - показуємо форму редагування
+                # Отримуємо варіанти відповіді
+                options = session.query(PollOption).filter(
+                    PollOption.poll_id == poll_id
+                ).order_by(PollOption.option_order).all()
+                
+                options_text = '\n'.join([opt.option_text for opt in options])
+                
+                # Форматуємо дату для input datetime-local
+                expires_at_str = ''
+                if poll.expires_at:
+                    expires_at_str = poll.expires_at.strftime('%Y-%m-%dT%H:%M')
+                
+                return render_template('edit_poll.html', 
+                                     poll=poll, 
+                                     options_text=options_text,
+                                     expires_at_str=expires_at_str)
+    except Exception as e:
+        flash(f'Помилка редагування опитування: {e}', 'danger')
+        return redirect(url_for('polls'))
+
+
 @app.route('/polls/<int:poll_id>/results')
 @admin_required
 def poll_results(poll_id):
