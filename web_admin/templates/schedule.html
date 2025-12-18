@@ -28,9 +28,11 @@
             </select>
         </div>
         <div class="d-flex flex-column flex-sm-row gap-2 mt-2">
+            {% if current_user.is_admin or current_user.can_edit_schedule %}
             <button class="btn btn-primary w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#addLessonModal">
                 <i class="bi bi-plus-circle"></i> <span class="d-none d-sm-inline">Додати заняття</span><span class="d-sm-none">Додати</span>
             </button>
+            {% endif %}
             {% if current_user.is_admin %}
             <button class="btn btn-success w-100 w-sm-auto" data-bs-toggle="modal" data-bs-target="#copyScheduleModal">
                 <i class="bi bi-files"></i> <span class="d-none d-sm-inline">Копіювати розклад</span><span class="d-sm-none">Копіювати</span>
@@ -39,6 +41,17 @@
         </div>
     </div>
 </div>
+
+{% if not current_user.is_admin and not current_user.can_edit_schedule %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> <strong>Редагування розкладу заборонено</strong><br>
+            Адміністратор заборонив вам додавання, редагування та видалення заняття. Ви можете тільки переглядати розклад.
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if selected_teacher_id %}
 <!-- Tabs для днів тижня -->
@@ -108,6 +121,7 @@
                         </td>
                         <td class="d-none d-xl-table-cell"><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
                         <td>
+                            {% if current_user.is_admin or current_user.can_edit_schedule %}
                             <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}', {{entry.group_id or 'null'}})">
                                 <i class="bi bi-pencil"></i>
                             </button>
@@ -117,6 +131,9 @@
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </form>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}
@@ -177,6 +194,7 @@
                         </td>
                         <td class="d-none d-xl-table-cell"><span class="badge bg-secondary">{{entry.exam_type}}</span></td>
                         <td>
+                            {% if current_user.is_admin or current_user.can_edit_schedule %}
                             <button class="btn btn-sm btn-warning" onclick="editLesson({{entry.id}}, '{{entry.day_of_week}}', '{{entry.time}}', '{{entry.subject}}', '{{entry.lesson_type}}', {{entry.teacher_user_id or 'null'}}, '{{entry.teacher_phone}}', '{{entry.classroom}}', '{{entry.conference_link}}', '{{entry.exam_type}}', '{{entry.week_type}}', {{entry.group_id or 'null'}})">
                                 <i class="bi bi-pencil"></i>
                             </button>
@@ -186,6 +204,9 @@
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </form>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}

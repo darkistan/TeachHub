@@ -135,7 +135,7 @@
                                 <button class="btn btn-sm btn-info" onclick="showSetPasswordModal({{ user.user_id }}, '@{{ user.username }}')">
                                     <i class="bi bi-key"></i> {% if user.password_hash %}Змінити пароль{% else %}Встановити пароль{% endif %}
                                 </button>
-                                <button class="btn btn-sm btn-warning" onclick="showEditFullNameModal({{ user.user_id }}, '{{ user.full_name or '' }}', '@{{ user.username }}')">
+                                <button class="btn btn-sm btn-warning" onclick="showEditFullNameModal({{ user.user_id }}, '{{ user.full_name or '' }}', '@{{ user.username }}', {% if user.can_edit_schedule is none or user.can_edit_schedule %}true{% else %}false{% endif %}, {% if user.can_edit_academic is none or user.can_edit_academic %}true{% else %}false{% endif %})">
                                     <i class="bi bi-pencil"></i> Редагувати ПІБ
                                 </button>
                                 {% set is_developer = developer_telegram_id and user.user_id|string == developer_telegram_id|string %}
@@ -231,12 +231,12 @@
     </div>
 </div>
 
-<!-- Модальне вікно редагування ПІБ -->
+<!-- Модальне вікно редагування ПІБ та прав -->
 <div class="modal fade" id="editFullNameModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Редагувати ПІБ викладача</h5>
+                <h5 class="modal-title">Редагувати ПІБ та права викладача</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST" id="editFullNameForm">
@@ -247,6 +247,22 @@
                         <label for="new_full_name" class="form-label">ПІБ викладача</label>
                         <input type="text" class="form-control" id="new_full_name" name="full_name" placeholder="Іванов Іван Іванович">
                         <small class="text-muted">Залиште порожнім, щоб видалити ПІБ</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Права доступу</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="can_edit_schedule" name="can_edit_schedule" value="1">
+                            <label class="form-check-label" for="can_edit_schedule">
+                                Дозволити редагування розкладу
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="can_edit_academic" name="can_edit_academic" value="1">
+                            <label class="form-check-label" for="can_edit_academic">
+                                Дозволити редагування академічних періодів
+                            </label>
+                        </div>
+                        <small class="text-muted">Якщо права не встановлені, користувач не зможе додавати, редагувати або видаляти відповідні дані</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -331,9 +347,11 @@
         new bootstrap.Modal(document.getElementById('setPasswordModal')).show();
     }
     
-    function showEditFullNameModal(userId, currentFullName, username) {
+    function showEditFullNameModal(userId, currentFullName, username, canEditSchedule, canEditAcademic) {
         document.getElementById('editFullNameUsername').textContent = username;
         document.getElementById('new_full_name').value = currentFullName || '';
+        document.getElementById('can_edit_schedule').checked = canEditSchedule !== undefined ? canEditSchedule : true;
+        document.getElementById('can_edit_academic').checked = canEditAcademic !== undefined ? canEditAcademic : true;
         document.getElementById('editFullNameForm').action = `/users/update-full-name/${userId}`;
         new bootstrap.Modal(document.getElementById('editFullNameModal')).show();
     }

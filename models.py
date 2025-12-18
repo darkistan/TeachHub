@@ -22,6 +22,8 @@ class User(Base):
     role = Column(String(20), default='user')  # admin, user
     full_name = Column(String(200))  # ПІБ викладача (призначається адміном)
     password_hash = Column(String(255), nullable=True)  # Хеш пароля для веб-доступу
+    can_edit_schedule = Column(Boolean, default=True)  # Чи може користувач редагувати розклад
+    can_edit_academic = Column(Boolean, default=True)  # Чи може користувач редагувати академічні періоди
     
     def __repr__(self):
         return f"<User(user_id={self.user_id}, username='{self.username}', role='{self.role}', full_name='{self.full_name}')>"

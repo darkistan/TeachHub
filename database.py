@@ -109,6 +109,7 @@ class DatabaseManager:
             self.migrate_add_teacher_user_id()
             self.migrate_update_announcements()
             self.migrate_add_password_hash()
+            self.migrate_add_user_permissions()  # Додаємо міграцію для can_edit_schedule та can_edit_academic
             self.migrate_create_groups_table()
             self.migrate_add_group_id_to_schedule()
             self.migrate_add_poll_fields()
@@ -256,6 +257,28 @@ class DatabaseManager:
                     conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання password_hash: {e}")
+    
+    def migrate_add_user_permissions(self):
+        """Міграція: додавання колонок can_edit_schedule та can_edit_academic до таблиці users"""
+        try:
+            from sqlalchemy import text, inspect
+            with self.engine.begin() as conn:
+                inspector = inspect(self.engine)
+                
+                if 'users' not in inspector.get_table_names():
+                    return
+                
+                columns = [col['name'] for col in inspector.get_columns('users')]
+                
+                if 'can_edit_schedule' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN can_edit_schedule BOOLEAN DEFAULT 1"))
+                    logger.log_info("Додано колонку can_edit_schedule до users")
+                
+                if 'can_edit_academic' not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN can_edit_academic BOOLEAN DEFAULT 1"))
+                    logger.log_info("Додано колонку can_edit_academic до users")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції додавання прав користувачів: {e}")
     
     def migrate_remove_orphaned_entries(self):
         """Міграція: видалення загальних записів без teacher_user_id"""

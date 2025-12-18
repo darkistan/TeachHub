@@ -159,6 +159,8 @@ class WebUser(UserMixin):
         self._role = user.role
         self._full_name = user.full_name
         self._username = user.username
+        self._can_edit_schedule = getattr(user, 'can_edit_schedule', True)
+        self._can_edit_academic = getattr(user, 'can_edit_academic', True)
     
     def get_id(self):
         return str(self._user_id)
@@ -174,6 +176,20 @@ class WebUser(UserMixin):
     @property
     def full_name(self):
         return self._full_name or self._username or f"ID: {self._user_id}"
+    
+    @property
+    def can_edit_schedule(self):
+        # Адміністратори завжди мають права
+        if self.is_admin:
+            return True
+        return self._can_edit_schedule
+    
+    @property
+    def can_edit_academic(self):
+        # Адміністратори завжди мають права
+        if self.is_admin:
+            return True
+        return self._can_edit_academic
 
 
 @login_manager.user_loader
@@ -470,17 +486,29 @@ def add_user():
 @app.route('/users/update-full-name/<int:user_id>', methods=['POST'])
 @admin_required
 def update_user_full_name(user_id):
-    """Оновлення ПІБ викладача"""
+    """Оновлення ПІБ викладача та прав доступу"""
     try:
         full_name = request.form.get('full_name', '').strip()
+        can_edit_schedule = request.form.get('can_edit_schedule') == '1'
+        can_edit_academic = request.form.get('can_edit_academic') == '1'
         
-        from auth import auth_manager
-        if auth_manager.update_user_full_name(user_id, full_name if full_name else None):
-            flash('ПІБ викладача оновлено!', 'success')
-        else:
-            flash('Користувача не знайдено!', 'warning')
+        with get_session() as session:
+            user = session.query(User).filter(User.user_id == user_id).first()
+            if user:
+                # Оновлюємо ПІБ через auth_manager для сумісності
+                from auth import auth_manager
+                auth_manager.update_user_full_name(user_id, full_name if full_name else None)
+                
+                # Оновлюємо права доступу
+                user.can_edit_schedule = can_edit_schedule
+                user.can_edit_academic = can_edit_academic
+                session.commit()
+                
+                flash('ПІБ та права викладача оновлено!', 'success')
+            else:
+                flash('Користувача не знайдено!', 'warning')
     except Exception as e:
-        flash(f'Помилка оновлення ПІБ: {e}', 'danger')
+        flash(f'Помилка оновлення: {e}', 'danger')
     
     return redirect(url_for('users'))
 
@@ -857,6 +885,11 @@ def schedule():
 def add_schedule_entry():
     """Додавання заняття"""
     try:
+        # Перевірка прав для звичайних користувачів
+        if not current_user.is_admin and not current_user.can_edit_schedule:
+            flash('У вас немає прав для додавання заняття!', 'danger')
+            return redirect(url_for('schedule'))
+        
         with get_session() as session:
             # Для користувачів (не адмінів) автоматично встановлюємо їх user_id
             if current_user.is_admin:
@@ -902,6 +935,11 @@ def add_schedule_entry():
 def edit_schedule_entry(entry_id):
     """Редагування заняття"""
     try:
+        # Перевірка прав для звичайних користувачів
+        if not current_user.is_admin and not current_user.can_edit_schedule:
+            flash('У вас немає прав для редагування заняття!', 'danger')
+            return redirect(url_for('schedule'))
+        
         with get_session() as session:
             entry = session.query(ScheduleEntry).filter(ScheduleEntry.id == entry_id).first()
             if entry:
@@ -955,6 +993,11 @@ def edit_schedule_entry(entry_id):
 def delete_schedule_entry(entry_id):
     """Видалення заняття"""
     try:
+        # Перевірка прав для звичайних користувачів
+        if not current_user.is_admin and not current_user.can_edit_schedule:
+            flash('У вас немає прав для видалення заняття!', 'danger')
+            return redirect(url_for('schedule'))
+        
         with get_session() as session:
             entry = session.query(ScheduleEntry).filter(ScheduleEntry.id == entry_id).first()
             if entry:
@@ -1891,6 +1934,11 @@ def academic():
 def add_academic_period():
     """Додавання академічного періоду"""
     try:
+        # Перевірка прав для звичайних користувачів
+        if not current_user.is_admin and not current_user.can_edit_academic:
+            flash('У вас немає прав для додавання академічного періоду!', 'danger')
+            return redirect(url_for('academic'))
+        
         with get_session() as session:
             # Для користувачів (не адмінів) автоматично встановлюємо їх user_id
             if current_user.is_admin:
@@ -1931,6 +1979,11 @@ def add_academic_period():
 def edit_academic_period(period_id):
     """Редагування періоду"""
     try:
+        # Перевірка прав для звичайних користувачів
+        if not current_user.is_admin and not current_user.can_edit_academic:
+            flash('У вас немає прав для редагування академічного періоду!', 'danger')
+            return redirect(url_for('academic'))
+        
         with get_session() as session:
             period = session.query(AcademicPeriod).filter(AcademicPeriod.id == period_id).first()
             if period:
@@ -1979,6 +2032,11 @@ def edit_academic_period(period_id):
 def delete_academic_period(period_id):
     """Видалення періоду"""
     try:
+        # Перевірка прав для звичайних користувачів
+        if not current_user.is_admin and not current_user.can_edit_academic:
+            flash('У вас немає прав для видалення академічного періоду!', 'danger')
+            return redirect(url_for('academic'))
+        
         with get_session() as session:
             period = session.query(AcademicPeriod).filter(AcademicPeriod.id == period_id).first()
             if period:
