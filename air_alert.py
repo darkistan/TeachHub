@@ -37,6 +37,8 @@ class AirAlertManager:
         self.active_alerts = []
         self.last_check_time = None
         self.is_updating = False
+        self.previous_alert_status = False  # Для відстеження зміни статусу
+        self.previous_alert_types = set()  # Для відстеження зміни типів тривог
         
     async def get_alert_status(self) -> bool:
         """
@@ -77,18 +79,31 @@ class AirAlertManager:
             region_alerts = await loop.run_in_executor(None, self._fetch_api_data)
             
             if region_alerts is not None:
+                # Визначаємо статус тривоги
+                new_alert_status = len(region_alerts) > 0
+                
+                # Отримуємо типи тривог (унікальні)
+                current_alert_types = set(alert.get('alert_type', 'unknown') for alert in region_alerts)
+                
+                # Логуємо тільки при зміні статусу або зміні типів тривог
+                status_changed = new_alert_status != self.previous_alert_status
+                types_changed = current_alert_types != self.previous_alert_types
+                
+                if status_changed or types_changed:
+                    if new_alert_status:
+                        alert_types_list = list(current_alert_types)
+                        logger.log_info(f"🚨 Активні тривоги в {self.city}: {alert_types_list}")
+                    else:
+                        logger.log_info(f"✅ Тривоги в {self.city} припинилися")
+                
                 # Оновлюємо список активних тривог
                 self.active_alerts = region_alerts
-                
-                # Визначаємо статус тривоги
-                self.alert_status = len(region_alerts) > 0
+                self.alert_status = new_alert_status
+                self.previous_alert_status = new_alert_status
+                self.previous_alert_types = current_alert_types
                 
                 self.last_update = datetime.now()
                 self.last_check_time = datetime.now()
-                
-                if self.alert_status:
-                    alert_types = [alert.get('alert_type', 'unknown') for alert in region_alerts]
-                    logger.log_info(f"Активні тривоги в {self.city}: {alert_types}")
             else:
                 logger.log_error("Не вдалося отримати дані з API тривог")
                 

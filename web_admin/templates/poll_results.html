@@ -58,45 +58,6 @@
         </div>
         {% endif %}
         
-        {% if not results.is_closed %}
-        <hr>
-        <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#closePollModal{{results.poll_id}}">
-            <i class="bi bi-lock"></i> Закрити опитування
-        </button>
-        
-        <!-- Modal для закриття опитування -->
-        <div class="modal fade" id="closePollModal{{results.poll_id}}" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title"><i class="bi bi-lock"></i> Закрити опитування</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <form method="POST" action="{{url_for('close_poll', poll_id=results.poll_id)}}">
-                        <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
-                        <div class="modal-body">
-                            <div class="mb-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="send_report" id="send_report{{results.poll_id}}" value="1" checked>
-                                    <label class="form-check-label" for="send_report{{results.poll_id}}">
-                                        <i class="bi bi-send"></i> Відправити звіт з результатами отримувачам опитування
-                                    </label>
-                                </div>
-                                <small class="form-text text-muted">Якщо не встановлено, опитування буде закрито без відправки звіту</small>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
-                            <button type="submit" class="btn btn-warning">
-                                <i class="bi bi-lock"></i> Закрити опитування
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        
         <hr>
         <h5 class="mb-3">
             <i class="bi bi-people"></i> Відповіді користувачів

@@ -248,7 +248,7 @@
                 <h5 class="modal-title"><i class="bi bi-lock"></i> Закрити опитування</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{url_for('close_poll', poll_id=poll.id)}}">
+            <form method="POST" action="{{url_for('close_poll', poll_id=poll.id)}}" id="closePollForm{{poll.id}}" class="no-loading">
                 <input type="hidden" name="csrf_token" value="{{csrf_token()}}"/>
                 <div class="modal-body">
                     <div class="mb-3">
@@ -271,6 +271,97 @@
         </div>
     </div>
 </div>
+<script>
+// #region agent log
+(function() {
+    const form = document.getElementById('closePollForm{{poll.id}}');
+    const modal = document.getElementById('closePollModal{{poll.id}}');
+    let isSubmitting = false;
+    
+    if (form && modal) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            
+            if (isSubmitting) {
+                return false;
+            }
+            
+            isSubmitting = true;
+            
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                const originalText = submitBtn.innerHTML;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Закриття...';
+            }
+            
+            const formData = new FormData(form);
+            
+            const bsModal = bootstrap.Modal.getInstance(modal);
+            if (bsModal) {
+                const modalClone = modal.cloneNode(true);
+                modal.parentNode.replaceChild(modalClone, modal);
+                
+                const newBsModal = new bootstrap.Modal(modalClone);
+                newBsModal.hide();
+                
+                modalClone.addEventListener('hidden.bs.modal', function() {
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }, { once: true });
+            } else {
+                const backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) {
+                    backdrop.remove();
+                }
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+            }
+            
+            setTimeout(function() {
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    redirect: 'follow'
+                })
+                .then(function(response) {
+                    window.location.replace(response.url || '/polls');
+                })
+                .catch(function(error) {
+                    console.error('Помилка закриття опитування:', error);
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="bi bi-lock"></i> Закрити опитування';
+                    }
+                    isSubmitting = false;
+                    alert('Помилка закриття опитування. Спробуйте ще раз.');
+                });
+            }, 200);
+            
+            return false;
+        }, true);
+        
+        modal.addEventListener('show.bs.modal', function(e) {
+            if (isSubmitting) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return false;
+            }
+        });
+    }
+})();
+// #endregion
+</script>
 {% endfor %}
 
 <script>

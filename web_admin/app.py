@@ -2320,7 +2320,7 @@ def stats():
 @app.route('/admin/schedule-report')
 @admin_required
 def schedule_report():
-    """Звіт по розкладу - дашборд з заняттями користувачів"""
+    """Монітор навчального процесу - дашборд з заняттями користувачів"""
     try:
         with get_session() as session:
             # Отримуємо всіх користувачів (викладачів) - без фільтрів, показуємо всіх
@@ -2396,13 +2396,40 @@ def schedule_report():
                 
                 entries = current_entries
                 
-                # Додаємо інформацію про групи до entries
+                # Додаємо інформацію про групи до entries та парсимо час для прогресу
                 groups_dict = {g.id: g for g in groups}
                 for entry in entries:
                     if entry.group_id and entry.group_id in groups_dict:
                         entry.group_name = groups_dict[entry.group_id].name
                     else:
                         entry.group_name = None
+                    
+                    # Парсимо час для розрахунку прогресу
+                    if '-' in entry.time:
+                        try:
+                            start_str, end_str = entry.time.split('-')
+                            start_time = datetime.strptime(start_str.strip(), "%H:%M").time()
+                            end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
+                            
+                            # Зберігаємо час початку та кінця як рядки для JavaScript
+                            entry.start_time_str = start_str.strip()
+                            entry.end_time_str = end_str.strip()
+                            
+                            # Розраховуємо тривалість в хвилинах
+                            start_datetime = datetime.combine(datetime.today(), start_time)
+                            end_datetime = datetime.combine(datetime.today(), end_time)
+                            if end_datetime < start_datetime:
+                                end_datetime += timedelta(days=1)
+                            duration_minutes = (end_datetime - start_datetime).total_seconds() / 60
+                            entry.duration_minutes = int(duration_minutes)
+                        except (ValueError, AttributeError):
+                            entry.start_time_str = None
+                            entry.end_time_str = None
+                            entry.duration_minutes = None
+                    else:
+                        entry.start_time_str = None
+                        entry.end_time_str = None
+                        entry.duration_minutes = None
                 
                 # Групуємо заняття по днях та типу тижня (для поточного дня)
                 schedule_data = {}

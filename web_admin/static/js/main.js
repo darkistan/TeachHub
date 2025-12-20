@@ -213,8 +213,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const forms = document.querySelectorAll('form');
     
     forms.forEach(form => {
-        form.addEventListener('submit', function(e) {
-            const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
+            form.addEventListener('submit', function(e) {
+                const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
             
             if (submitBtn && !form.classList.contains('no-loading')) {
                 // Додаємо індикатор завантаження

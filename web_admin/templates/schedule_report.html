@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Звіт по розкладу - TeachHub Admin{% endblock %}
+{% block title %}Монітор навчального процесу - TeachHub Admin{% endblock %}
 
 {% block content %}
 <div class="row mb-3">
     <div class="col-md-8">
-        <h1><i class="bi bi-calendar-week"></i> Звіт по розкладу</h1>
+        <h1><i class="bi bi-calendar-week"></i> Монітор навчального процесу</h1>
         <p class="text-muted">Перегляд поточного розкладу всіх користувачів</p>
     </div>
     <div class="col-md-4 text-end">
@@ -74,6 +74,23 @@
                                     </span>
                                     {% endif %}
                                 </div>
+                                {% if entry.start_time_str and entry.end_time_str and entry.duration_minutes %}
+                                <!-- Прогрес-бар пари -->
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <small class="opacity-75">Прогрес пари</small>
+                                        <small class="opacity-75" id="progress-text-{{entry.id}}">0%</small>
+                                    </div>
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar bg-light" role="progressbar" 
+                                             id="progress-bar-{{entry.id}}"
+                                             data-start-time="{{entry.start_time_str}}"
+                                             data-end-time="{{entry.end_time_str}}"
+                                             data-duration="{{entry.duration_minutes}}"
+                                             style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                {% endif %}
                             </div>
                             <div class="small">
                                 {% if entry.group_name %}
@@ -82,8 +99,16 @@
                                 </div>
                                 {% endif %}
                                 {% if entry.classroom %}
-                                <div>
+                                <div class="mb-1">
                                     <i class="bi bi-building"></i> <strong>Аудиторія:</strong> {{entry.classroom}}
+                                </div>
+                                {% endif %}
+                                {% if entry.conference_link %}
+                                <div>
+                                    <i class="bi bi-camera-video"></i> <strong>Google Meet:</strong> 
+                                    <a href="{{entry.conference_link}}" target="_blank" class="text-white text-decoration-underline">
+                                        Приєднатися
+                                    </a>
                                 </div>
                                 {% endif %}
                             </div>
@@ -110,7 +135,81 @@
 {% endif %}
 
 <script>
-// Оновлення поточного часу кожну хвилину
+// Розрахунок прогресу пари на основі поточного часу
+function calculateLessonProgress(startTimeStr, endTimeStr) {
+    const now = new Date();
+    const currentHours = now.getHours();
+    const currentMinutes = now.getMinutes();
+    const currentTimeInMinutes = currentHours * 60 + currentMinutes;
+    
+    // Парсимо час початку та кінця
+    const [startHours, startMins] = startTimeStr.split(':').map(Number);
+    const [endHours, endMins] = endTimeStr.split(':').map(Number);
+    
+    const startTimeInMinutes = startHours * 60 + startMins;
+    const endTimeInMinutes = endHours * 60 + endMins;
+    
+    // Якщо кінець менший за початок (наприклад, 23:00-01:00), додаємо 24 години
+    let totalDuration;
+    if (endTimeInMinutes < startTimeInMinutes) {
+        totalDuration = (24 * 60 - startTimeInMinutes) + endTimeInMinutes;
+    } else {
+        totalDuration = endTimeInMinutes - startTimeInMinutes;
+    }
+    
+    // Розраховуємо скільки хвилин пройшло від початку
+    let elapsed;
+    if (endTimeInMinutes < startTimeInMinutes) {
+        // Заняття переходить через опівночі
+        if (currentTimeInMinutes >= startTimeInMinutes) {
+            // Поточний час після початку, але до опівночі
+            elapsed = currentTimeInMinutes - startTimeInMinutes;
+        } else {
+            // Поточний час після опівночі, але до кінця
+            elapsed = (24 * 60 - startTimeInMinutes) + currentTimeInMinutes;
+        }
+    } else {
+        // Звичайне заняття в межах одного дня
+        if (currentTimeInMinutes < startTimeInMinutes) {
+            return 0; // Заняття ще не почалося
+        }
+        if (currentTimeInMinutes > endTimeInMinutes) {
+            return 100; // Заняття вже закінчилося
+        }
+        elapsed = currentTimeInMinutes - startTimeInMinutes;
+    }
+    
+    // Розраховуємо прогрес у відсотках
+    const progress = (elapsed / totalDuration) * 100;
+    
+    return Math.min(100, Math.max(0, Math.round(progress)));
+}
+
+// Оновлення прогрес-барів
+function updateProgressBars() {
+    const progressBars = document.querySelectorAll('[id^="progress-bar-"]');
+    
+    progressBars.forEach(function(bar) {
+        const startTime = bar.getAttribute('data-start-time');
+        const endTime = bar.getAttribute('data-end-time');
+        
+        if (startTime && endTime) {
+            const progress = calculateLessonProgress(startTime, endTime);
+            
+            // Оновлюємо прогрес-бар
+            bar.style.width = progress + '%';
+            
+            // Оновлюємо текст прогресу
+            const progressTextId = bar.id.replace('progress-bar-', 'progress-text-');
+            const progressText = document.getElementById(progressTextId);
+            if (progressText) {
+                progressText.textContent = progress + '%';
+            }
+        }
+    });
+}
+
+// Оновлення поточного часу
 function updateCurrentTime() {
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, '0');
@@ -121,9 +220,9 @@ function updateCurrentTime() {
     }
 }
 
-// Оновлюємо час при завантаженні та кожну хвилину
+// Ініціалізація при завантаженні сторінки
 updateCurrentTime();
-setInterval(updateCurrentTime, 60000);
+updateProgressBars();
 
 function refreshDashboard() {
     const btn = document.getElementById('refreshBtn');
