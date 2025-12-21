@@ -113,6 +113,7 @@ class DatabaseManager:
             self.migrate_create_groups_table()
             self.migrate_add_group_id_to_schedule()
             self.migrate_add_poll_fields()
+            self.migrate_active_sessions_table()  # Міграція таблиці активних сесій
             
             # Видаляємо загальні записи без teacher_user_id
             self.migrate_remove_orphaned_entries()
@@ -360,6 +361,27 @@ class DatabaseManager:
                         logger.log_info("Додано колонку recipient_user_ids до polls")
         except Exception as e:
             logger.log_error(f"Помилка міграції додавання полів опитування: {e}")
+    
+    def migrate_active_sessions_table(self):
+        """Міграція: створення таблиці active_sessions"""
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(self.engine)
+            
+            # Перевіряємо чи існує таблиця active_sessions
+            if 'active_sessions' not in inspector.get_table_names():
+                # Таблиця буде створена автоматично через Base.metadata.create_all()
+                # Але перевіряємо чи вона існує після створення
+                Base.metadata.create_all(bind=self.engine, tables=[Base.metadata.tables['active_sessions']])
+                inspector = inspect(self.engine)
+                if 'active_sessions' in inspector.get_table_names():
+                    logger.log_info("Таблиця active_sessions успішно створена")
+                else:
+                    logger.log_warning("Не вдалося створити таблицю active_sessions")
+            else:
+                logger.log_info("Таблиця active_sessions вже існує")
+        except Exception as e:
+            logger.log_error(f"Помилка міграції створення таблиці active_sessions: {e}")
     
     def drop_all_tables(self):
         """Видалення всіх таблиць (використовувати обережно!)"""

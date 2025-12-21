@@ -9,7 +9,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session as flask_session
 from flask_wtf import CSRFProtect
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_limiter import Limiter
@@ -26,7 +26,7 @@ from models import (
     User, PendingRequest, ScheduleEntry, ScheduleMetadata,
     AcademicPeriod, Announcement, AnnouncementRecipient,
     NotificationHistory, NotificationSettings, Log, BotConfig, Group,
-    Poll, PollOption, PollResponse
+    Poll, PollOption, PollResponse, ActiveSession
 )
 from air_alert import get_air_alert_manager
 from poll_manager import get_poll_manager
@@ -83,6 +83,16 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Будь ласка, увійдіть для доступу до цієї сторінки.'
 login_manager.login_message_category = 'info'
+
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    """Обробка неавторизованих запитів (включаючи завершені сесії)"""
+    if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'error': 'Unauthorized', 'redirect': url_for('login')}), 401
+    flash('Вашу сесію було завершено. Будь ласка, увійдіть знову.', 'warning')
+    return redirect(url_for('login'))
+
 
 # Ініціалізація Flask-Limiter для rate limiting
 limiter = Limiter(
@@ -218,6 +228,97 @@ def admin_required(f):
     return decorated_function
 
 
+# Функції управління сесіями
+def get_remote_ip():
+    """Отримання IP адреси клієнта з урахуванням ProxyFix"""
+    return get_remote_address()
+
+
+def track_session_login(user_id, session_id, ip_address, user_agent):
+    """Відстеження входу користувача та збереження активної сесії"""
+    try:
+        with get_session() as session:
+            # Перевіряємо, чи не існує вже активна сесія з цим session_id
+            existing = session.query(ActiveSession).filter(
+                ActiveSession.session_id == session_id,
+                ActiveSession.is_active == True
+            ).first()
+            
+            if existing:
+                # Оновлюємо існуючу сесію
+                existing.user_id = user_id
+                existing.ip_address = ip_address
+                existing.user_agent = user_agent
+                existing.login_time = datetime.now()
+                existing.last_activity = datetime.now()
+            else:
+                # Створюємо нову сесію
+                active_session = ActiveSession(
+                    user_id=user_id,
+                    session_id=session_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    login_time=datetime.now(),
+                    last_activity=datetime.now(),
+                    is_active=True
+                )
+                session.add(active_session)
+            
+            session.commit()
+    except Exception as e:
+        logger.log_error(f"Помилка відстеження входу користувача {user_id}: {e}")
+
+
+def track_session_logout(session_id):
+    """Позначення сесії як неактивної при виході користувача"""
+    try:
+        with get_session() as session:
+            active_session = session.query(ActiveSession).filter(
+                ActiveSession.session_id == session_id,
+                ActiveSession.is_active == True
+            ).first()
+            
+            if active_session:
+                active_session.is_active = False
+                session.commit()
+    except Exception as e:
+        logger.log_error(f"Помилка відстеження виходу користувача (session_id: {session_id}): {e}")
+
+
+def update_session_activity(session_id):
+    """Оновлення часу останньої активності для активної сесії"""
+    try:
+        with get_session() as session:
+            active_session = session.query(ActiveSession).filter(
+                ActiveSession.session_id == session_id,
+                ActiveSession.is_active == True
+            ).first()
+            
+            if active_session:
+                active_session.last_activity = datetime.now()
+                session.commit()
+    except Exception as e:
+        # Не логуємо помилки оновлення активності, щоб не засмічувати логи
+        pass
+
+
+def cleanup_expired_sessions():
+    """Очищення застарілих сесій (неактивних більше 24 годин)"""
+    try:
+        with get_session() as session:
+            cutoff_time = datetime.now() - timedelta(hours=24)
+            expired_count = session.query(ActiveSession).filter(
+                ActiveSession.is_active == True,
+                ActiveSession.last_activity < cutoff_time
+            ).update({'is_active': False})
+            
+            session.commit()
+            if expired_count > 0:
+                logger.log_info(f"Очищено {expired_count} застарілих сесій")
+    except Exception as e:
+        logger.log_error(f"Помилка очищення застарілих сесій: {e}")
+
+
 @app.route('/login', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
 def login():
@@ -257,7 +358,17 @@ def login():
                 
                 if user and user.password_hash and check_password_hash(user.password_hash, password):
                     web_user = WebUser(user)
+                    
+                    # Генеруємо унікальний session_id для відстеження
+                    session_id = str(uuid.uuid4())
+                    flask_session['session_id'] = session_id
+                    
                     login_user(web_user, remember=True)
+                    
+                    # Відстежуємо сесію
+                    ip_address = get_remote_ip()
+                    user_agent = request.headers.get('User-Agent', '')
+                    track_session_login(user.user_id, session_id, ip_address, user_agent)
                     
                     # Логування успішного входу
                     logger.log_info(f"Успішний вхід користувача {user.user_id} ({user.full_name or user.username})", user_id=user.user_id)
@@ -274,6 +385,51 @@ def login():
             flash(f'Помилка входу: {e}', 'danger')
     
     return render_template('login.html', users=users_list)
+
+
+@app.before_request
+def update_session_before_request():
+    """Оновлення активності сесії перед кожним запитом та перевірка на завершені сесії"""
+    # Пропускаємо статичні файли, health check та login/logout
+    if request.endpoint and (
+        request.endpoint.startswith('static') or 
+        request.endpoint == 'health_check' or
+        request.endpoint == 'login' or
+        request.path.startswith('/static')
+    ):
+        return
+    
+    if current_user.is_authenticated:
+        session_id = flask_session.get('session_id')
+        if session_id:
+            # Перевіряємо, чи активна сесія
+            session_inactive = False
+            try:
+                with get_session() as session:
+                    active_session = session.query(ActiveSession).filter(
+                        ActiveSession.session_id == session_id
+                    ).first()
+                    
+                    # Якщо сесії немає або вона неактивна (завершена адміном)
+                    if not active_session or not active_session.is_active:
+                        session_inactive = True
+                    else:
+                        # Оновлюємо активність тільки якщо сесія активна
+                        update_session_activity(session_id)
+            except Exception as e:
+                logger.log_error(f"Помилка перевірки сесії: {e}")
+                # У випадку помилки не блокуємо запит
+                return
+            
+            # Виконуємо logout після закриття контексту БД
+            if session_inactive:
+                # Сесія була завершена адміном, виконуємо вихід
+                logout_user()
+                flask_session.pop('session_id', None)
+                flash('Вашу сесію було завершено адміністратором.', 'warning')
+                # Перенаправляємо на login напряму
+                from flask import redirect
+                return redirect(url_for('login'))
 
 
 @app.route('/health')
@@ -303,7 +459,15 @@ def health_check():
 def logout():
     """Вихід з системи"""
     user_id = current_user.user_id
+    session_id = flask_session.get('session_id')
+    
+    # Відстежуємо вихід перед logout_user()
+    if session_id:
+        track_session_logout(session_id)
+    
     logout_user()
+    flask_session.pop('session_id', None)  # Видаляємо session_id з Flask session
+    
     logger.log_info(f"Користувач {user_id} вийшов з системи", user_id=user_id)
     flash('Ви вийшли з системи.', 'info')
     return redirect(url_for('login'))
@@ -1169,6 +1333,103 @@ def clear_old_logs():
         flash(f'Помилка очищення логів: {e}', 'danger')
     
     return redirect(url_for('logs'))
+
+
+@app.route('/admin/sessions')
+@admin_required
+def sessions():
+    """Перегляд активних сесій користувачів"""
+    try:
+        # Очищаємо застарілі сесії перед відображенням
+        cleanup_expired_sessions()
+        
+        with get_session() as session:
+            # Отримуємо всі активні сесії з інформацією про користувачів
+            active_sessions = session.query(ActiveSession, User).join(
+                User, ActiveSession.user_id == User.user_id
+            ).filter(
+                ActiveSession.is_active == True
+            ).order_by(ActiveSession.last_activity.desc()).all()
+            
+            # Поточна сесія адміна
+            current_session_id = flask_session.get('session_id')
+            
+            sessions_list = []
+            for active_session, user in active_sessions:
+                sessions_list.append({
+                    'id': active_session.id,
+                    'session_id': active_session.session_id,
+                    'user_id': user.user_id,
+                    'user_name': user.full_name or user.username or f"ID: {user.user_id}",
+                    'ip_address': active_session.ip_address,
+                    'user_agent': active_session.user_agent or 'Невідомо',
+                    'login_time': active_session.login_time,
+                    'last_activity': active_session.last_activity,
+                    'is_current': active_session.session_id == current_session_id
+                })
+        
+        return render_template('sessions.html', sessions=sessions_list, current_session_id=current_session_id, current_time=datetime.now())
+    except Exception as e:
+        logger.log_error(f"Помилка перегляду активних сесій: {e}")
+        flash('Помилка завантаження активних сесій.', 'danger')
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/admin/sessions/<session_id>/terminate', methods=['POST'])
+@admin_required
+def terminate_session(session_id):
+    """Завершення активної сесії користувача"""
+    try:
+        current_session_id = flask_session.get('session_id')
+        
+        with get_session() as session:
+            active_session = session.query(ActiveSession).filter(
+                ActiveSession.session_id == session_id,
+                ActiveSession.is_active == True
+            ).first()
+            
+            if not active_session:
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'success': False, 'message': 'Сесію не знайдено'}), 404
+                flash('Сесію не знайдено.', 'danger')
+                return redirect(url_for('sessions'))
+            
+            # Отримуємо інформацію про користувача для логування
+            user = session.query(User).filter(User.user_id == active_session.user_id).first()
+            user_name = user.full_name if user and user.full_name else (user.username if user else f"ID: {active_session.user_id}")
+            
+            # Позначаємо сесію як неактивну
+            active_session.is_active = False
+            session.commit()
+            
+            # Логуємо дію адміністратора
+            logger.log_warning(
+                f"Адміністратор {current_user.user_id} ({current_user.full_name}) завершив сесію користувача {active_session.user_id} ({user_name})",
+                user_id=current_user.user_id
+            )
+            
+            # Якщо це поточна сесія адміна, виконуємо вихід
+            if session_id == current_session_id:
+                logout_user()
+                flask_session.pop('session_id', None)
+                if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return jsonify({'success': True, 'redirect': url_for('login')}), 200
+                flash('Вашу сесію було завершено.', 'warning')
+                return redirect(url_for('login'))
+            
+            # Для чужих сесій повертаємо успішну відповідь
+            if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return jsonify({'success': True, 'message': 'Сесію завершено'}), 200
+            
+            flash('Сесію успішно завершено.', 'success')
+            return redirect(url_for('sessions'))
+            
+    except Exception as e:
+        logger.log_error(f"Помилка завершення сесії {session_id}: {e}")
+        if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': 'Помилка завершення сесії'}), 500
+        flash('Помилка завершення сесії.', 'danger')
+        return redirect(url_for('sessions'))
 
 
 @app.route('/settings')
@@ -2487,8 +2748,9 @@ def favicon():
 @app.errorhandler(404)
 def not_found(error):
     """Обробка 404 помилок"""
-    # Не логуємо 404 для favicon.ico
-    if '/favicon.ico' not in request.url:
+    # Не логуємо 404 для favicon.ico та apple-touch-icon (стандартні запити браузерів)
+    url = request.url.lower()
+    if '/favicon.ico' not in url and 'apple-touch-icon' not in url:
         if FLASK_ENV == 'production':
             logger.log_warning(f"404 помилка: {request.url}")
     return render_template('error.html', error_code=404, error_message='Сторінку не знайдено'), 404
@@ -2707,6 +2969,20 @@ def service_worker():
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+@app.route('/apple-touch-icon.png')
+@app.route('/apple-touch-icon-precomposed.png')
+@app.route('/apple-touch-icon-120x120.png')
+@app.route('/apple-touch-icon-120x120-precomposed.png')
+def apple_touch_icon():
+    """Обробка запитів на apple-touch-icon для iOS (різні варіанти шляхів)"""
+    try:
+        return send_file('static/icons/apple-touch-icon.png', mimetype='image/png')
+    except FileNotFoundError:
+        # Якщо файл не знайдено, повертаємо 404 без логування
+        from flask import abort
+        abort(404)
 
 
 # Запуск додатку

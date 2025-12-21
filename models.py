@@ -255,4 +255,24 @@ class PollResponse(Base):
         return f"<PollResponse(poll_id={self.poll_id}, user_id={self.user_id}, option_id={self.option_id})>"
 
 
+class ActiveSession(Base):
+    """Модель активної сесії користувача у веб-інтерфейсі"""
+    __tablename__ = 'active_sessions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False, index=True)
+    session_id = Column(String(255), unique=True, nullable=False, index=True)  # Унікальний ідентифікатор сесії Flask-Login
+    ip_address = Column(String(50), nullable=False)  # IP адреса клієнта
+    user_agent = Column(String(500), nullable=True)  # User-Agent браузера
+    login_time = Column(DateTime, default=datetime.now, nullable=False)  # Час входу
+    last_activity = Column(DateTime, default=datetime.now, nullable=False, index=True)  # Час останньої активності
+    is_active = Column(Boolean, default=True, nullable=False, index=True)  # Чи активна сесія
+    
+    # Relationship до User
+    user = relationship('User', backref='active_sessions')
+    
+    def __repr__(self):
+        return f"<ActiveSession(user_id={self.user_id}, session_id='{self.session_id[:20]}...', ip='{self.ip_address}', is_active={self.is_active})>"
+
+
 
