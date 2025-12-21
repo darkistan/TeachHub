@@ -304,6 +304,8 @@ body {
 footer {
     margin-top: 3rem;
     border-top: 1px solid #dee2e6;
+    position: relative;
+    z-index: 1;
 }
 
 [data-bs-theme="dark"] footer {
@@ -314,6 +316,13 @@ footer {
 
 [data-bs-theme="dark"] footer .text-muted {
     color: #adb5bd !important;
+}
+
+/* Підтримка safe-area для пристроїв з вирізами (iPhone X+) */
+@supports (padding: max(0px)) {
+    body {
+        padding-bottom: max(0px, env(safe-area-inset-bottom));
+    }
 }
 
 /* Air Alert Pulse Animation */
@@ -542,6 +551,23 @@ h3 {
 
 /* ========== MOBILE RESPONSIVENESS ========== */
 @media (max-width: 768px) {
+    /* Додаємо відступ знизу для мобільних пристроїв, щоб контент не перекривався навігаційною панеллю браузера */
+    body {
+        padding-bottom: 70px;
+        padding-bottom: calc(70px + env(safe-area-inset-bottom));
+    }
+    
+    /* Зменшуємо відступ footer на мобільних */
+    footer {
+        margin-top: 2.5rem;
+        margin-bottom: env(safe-area-inset-bottom);
+    }
+    
+    /* Додаємо відступ для контейнера контенту */
+    .container-fluid {
+        padding-bottom: 1rem;
+    }
+    
     .navbar .nav-link {
         font-size: 0.95rem;
         padding: 0.5rem 0.75rem;
@@ -563,8 +589,15 @@ h3 {
         margin-bottom: 15px;
     }
     
+    /* Додатковий відступ для card-body на мобільних */
+    .card-body {
+        padding-bottom: 2rem !important;
+    }
+    
     .table-responsive {
         font-size: 0.875rem;
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
     }
     
     .modal-dialog {
@@ -628,11 +661,41 @@ h3 {
     }
 }
 
+/* Стилі для сторінки користувачів - додатковий відступ знизу */
+.card:last-child {
+    margin-bottom: 4rem;
+}
+
+@media (max-width: 768px) {
+    .card:last-child {
+        margin-bottom: 5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .card:last-child {
+        margin-bottom: 6rem;
+    }
+}
+
 /* Додаткові стилі для дуже малих екранів */
 @media (max-width: 576px) {
+    /* Додаємо відступ знизу для мобільних пристроїв, щоб контент не перекривався навігаційною панеллю браузера */
+    body {
+        padding-bottom: 80px !important;
+        padding-bottom: calc(80px + env(safe-area-inset-bottom)) !important;
+    }
+    
+    /* Зменшуємо відступ footer на мобільних */
+    footer {
+        margin-top: 2rem !important;
+        margin-bottom: env(safe-area-inset-bottom);
+    }
+    
     .container-fluid {
         padding-left: 0.5rem;
         padding-right: 0.5rem;
+        padding-bottom: 1rem;
     }
     
     .card {
@@ -651,6 +714,18 @@ h3 {
     /* Компактніше відображення таблиць */
     .table-responsive {
         font-size: 0.8rem;
+        margin-bottom: 2rem;
+        padding-bottom: 1.5rem;
+    }
+    
+    /* Додатковий відступ для card-body на дуже малих екранах */
+    .card-body {
+        padding-bottom: 2.5rem !important;
+    }
+    
+    /* Додатковий відступ для card, яка містить таблицю */
+    .card {
+        margin-bottom: 2rem;
     }
     
     .table th,

@@ -2688,6 +2688,27 @@ def delete_group(group_id):
     return redirect(url_for('groups'))
 
 
+# PWA маршрути
+@app.route('/manifest.json')
+def manifest():
+    """PWA Web App Manifest"""
+    return send_file('static/manifest.json', mimetype='application/manifest+json')
+
+
+@app.route('/sw.js')
+@csrf.exempt
+def service_worker():
+    """Service Worker для PWA"""
+    response = send_file('static/js/sw.js', mimetype='application/javascript')
+    # Дозволяємо service worker працювати на всіх сторінках
+    response.headers['Service-Worker-Allowed'] = '/'
+    # Відключаємо кешування для service worker (важливо для оновлень)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
 # Запуск додатку
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)
