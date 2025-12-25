@@ -84,13 +84,12 @@ class ScheduleHandler:
             current_date = datetime.now().date()
             
             # Знаходимо поточну неділю (початок тижня)
-            days_since_sunday = current_date.weekday() + 1  # Днів з неділі (1-7)
-            if days_since_sunday == 7:
-                # Сьогодні неділя
-                current_sunday = current_date
-            else:
-                # Знаходимо минулу неділю
-                current_sunday = current_date - timedelta(days=days_since_sunday)
+            # weekday(): 0 = понеділок, 6 = неділя
+            # Для понеділка (0): повертаємо неділю минулого тижня (віднімаємо 1 день)
+            # Для неділі (6): повертаємо сьогоднішню дату (віднімаємо 0 днів)
+            # Для інших днів: віднімаємо (weekday() + 1) днів
+            days_offset = (current_date.weekday() + 1) % 7  # 0 для неділі, 1-6 для інших днів
+            current_sunday = current_date - timedelta(days=days_offset)
             
             # Обчислюємо різницю в тижнях між поточною неділею та датою початку
             days_diff = (current_sunday - numerator_start).days
