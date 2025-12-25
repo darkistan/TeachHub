@@ -104,9 +104,6 @@ class ScheduleHandler:
             # Парний номер тижня = чисельник, непарний = знаменник
             result = "numerator" if week_number % 2 == 0 else "denominator"
             
-            # Діагностичне логування (тільки при зміні типу тижня)
-            logger.log_info(f"Автоматичне визначення типу тижня: дата початку={numerator_start_date}, поточна неділя={current_sunday}, різниця={days_diff} днів, номер тижня={week_number}, результат={result}")
-            
             return result
         except Exception as e:
             logger.log_error(f"Помилка автоматичного визначення типу тижня: {e}")
