@@ -126,12 +126,41 @@ class AirAlertManager:
                 # Отримуємо список активних тривог
                 alerts = data.get('alerts', [])
                 
-                # Фільтруємо тривоги для міста Дніпро
-                city_alerts = [
-                    alert for alert in alerts 
-                    if 'дніпро' in alert.get('location_title', '').lower() or 
-                       'днепр' in alert.get('location_title', '').lower()
-                ]
+                # Фільтруємо тривоги для міста Дніпро (враховуючи різні варіанти назв)
+                city_name_lower = self.city.lower()
+                city_alerts = []
+                
+                for alert in alerts:
+                    location_title = alert.get('location_title', '').lower()
+                    
+                    # Перевіряємо тільки "м. Дніпро" та територіальну громаду (тергромаду)
+                    # Прибираємо "Дніпровський район" - тепер не потрібен
+                    location_type = alert.get('location_type', '').lower()
+                    matches_city = False
+                    
+                    if city_name_lower == 'дніпро':
+                        # Перевіряємо місто: "м. дніпро", "м. днепр"
+                        if ('м. дніпро' in location_title or 
+                            'м. днепр' in location_title or
+                            'м.дніпро' in location_title or
+                            'м.днепр' in location_title):
+                            matches_city = True
+                        # Перевіряємо територіальну громаду (location_type == 'hromada')
+                        elif location_type == 'hromada' and ('дніпро' in location_title or 'днепр' in location_title):
+                            matches_city = True
+                    else:
+                        # Для інших міст залишаємо стару логіку
+                        matches_city = (city_name_lower in location_title or 
+                                       'дніпро' in location_title or 
+                                       'днепр' in location_title)
+                    
+                    if matches_city:
+                        # Перевіряємо, чи тривога дійсно активна
+                        finished_at = alert.get('finished_at')
+                        
+                        # Тривога активна, якщо finished_at відсутня або None
+                        if finished_at is None:
+                            city_alerts.append(alert)
                 
                 return city_alerts
                     
