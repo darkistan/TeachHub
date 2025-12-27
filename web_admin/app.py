@@ -833,6 +833,66 @@ def send_telegram_message(user_id: int, message: str) -> bool:
         return False
 
 
+class EntryData:
+    """Простий об'єкт для зберігання даних заняття для формування повідомлень"""
+    def __init__(self, day_of_week, time, subject, classroom, week_type=None):
+        self.day_of_week = day_of_week
+        self.time = time
+        self.subject = subject
+        self.classroom = classroom or ''
+        self.week_type = week_type
+
+
+def format_schedule_change_message(entry, change_type: str) -> str:
+    """
+    Формування повідомлення про зміну в розкладі
+    
+    Args:
+        entry: Об'єкт ScheduleEntry
+        change_type: Тип зміни ('added', 'edited', 'deleted')
+        
+    Returns:
+        Відформатований текст повідомлення
+    """
+    # Перетворення назв днів на українську
+    day_names = {
+        'monday': 'Понеділок', 'tuesday': 'Вівторок', 'wednesday': 'Середа',
+        'thursday': 'Четвер', 'friday': "П'ятниця", 'saturday': 'Субота', 'sunday': 'Неділя'
+    }
+    
+    day_name = day_names.get(entry.day_of_week, entry.day_of_week)
+    classroom_text = f"🏛️ {entry.classroom}\n" if entry.classroom else ""
+    
+    # Перетворення типу тижня на українську
+    week_type_names = {
+        'numerator': 'Чисельник',
+        'denominator': 'Знаменник'
+    }
+    week_type_text = week_type_names.get(entry.week_type, entry.week_type) if hasattr(entry, 'week_type') else ''
+    week_type_display = f"📚 {week_type_text}\n" if week_type_text else ""
+    
+    if change_type == 'added':
+        emoji = "📅"
+        title = "Додано заняття до вашого розкладу"
+    elif change_type == 'edited':
+        emoji = "✏️"
+        title = "Змінено заняття у вашому розкладі"
+    else:  # deleted
+        emoji = "🗑️"
+        title = "Видалено заняття з вашого розкладу"
+    
+    message = f"{emoji} <b>{title}</b>\n\n"
+    message += f"<b>{entry.subject}</b>\n"
+    message += f"📆 {day_name}\n"
+    message += f"🕐 {entry.time}\n"
+    if week_type_display:
+        message += week_type_display
+    if classroom_text:
+        message += classroom_text
+    
+    return message
+
+
 @app.route('/users/approve/<int:user_id>', methods=['POST'])
 @admin_required
 def approve_request(user_id):
@@ -1087,6 +1147,16 @@ def add_schedule_entry():
             session.add(entry)
             session.commit()
             
+            # Відправка повідомлення користувачу (тільки для адміністраторів)
+            if current_user.is_admin:
+                notify_user = request.form.get('notify_user') == '1'
+                if notify_user and teacher_user_id:
+                    try:
+                        message = format_schedule_change_message(entry, 'added')
+                        send_telegram_message(teacher_user_id, message)
+                    except Exception as notify_error:
+                        logger.log_error(f"Помилка відправки сповіщення про додавання заняття: {notify_error}")
+            
             flash(f'Заняття "{entry.subject}" додано!', 'success')
     except Exception as e:
         flash(f'Помилка додавання заняття: {e}', 'danger')
@@ -1143,6 +1213,16 @@ def edit_schedule_entry(entry_id):
                 entry.group_id = group_id if group_id else None
                 session.commit()
                 
+                # Відправка повідомлення користувачу (тільки для адміністраторів)
+                if current_user.is_admin:
+                    notify_user = request.form.get('notify_user') == '1'
+                    if notify_user and teacher_user_id:
+                        try:
+                            message = format_schedule_change_message(entry, 'edited')
+                            send_telegram_message(teacher_user_id, message)
+                        except Exception as notify_error:
+                            logger.log_error(f"Помилка відправки сповіщення про редагування заняття: {notify_error}")
+                
                 flash(f'Заняття "{entry.subject}" оновлено!', 'success')
             else:
                 flash('Заняття не знайдено!', 'warning')
@@ -1169,9 +1249,31 @@ def delete_schedule_entry(entry_id):
                 if not current_user.is_admin and entry.teacher_user_id != current_user.user_id:
                     flash('У вас немає прав для видалення цього заняття!', 'danger')
                     return redirect(url_for('schedule'))
+                
+                # Зберігаємо дані для сповіщення перед видаленням
                 subject = entry.subject
+                teacher_user_id_for_notification = entry.teacher_user_id
+                
+                # Створюємо простий об'єкт з даними для формування повідомлення
+                entry_data = EntryData(
+                    day_of_week=entry.day_of_week,
+                    time=entry.time,
+                    subject=entry.subject,
+                    classroom=entry.classroom,
+                    week_type=entry.week_type
+                )
+                
                 session.delete(entry)
                 session.commit()
+                
+                # Відправка повідомлення користувачу (тільки для адміністраторів)
+                if current_user.is_admin and teacher_user_id_for_notification:
+                    try:
+                        message = format_schedule_change_message(entry_data, 'deleted')
+                        send_telegram_message(teacher_user_id_for_notification, message)
+                    except Exception as notify_error:
+                        logger.log_error(f"Помилка відправки сповіщення про видалення заняття: {notify_error}")
+                
                 flash(f'Заняття "{subject}" видалено!', 'success')
             else:
                 flash('Заняття не знайдено!', 'warning')

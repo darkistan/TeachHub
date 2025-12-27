@@ -355,6 +355,17 @@
                         </select>
                         <small class="text-muted">Група, для якої проводиться заняття</small>
                     </div>
+                    {% if current_user.is_admin %}
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="notify_user" id="add_notify_user" value="1">
+                            <label class="form-check-label" for="add_notify_user">
+                                Сповістити користувача про зміни
+                            </label>
+                        </div>
+                        <small class="text-muted">Відправити повідомлення в Telegram викладачу про додавання заняття</small>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
@@ -494,6 +505,17 @@
                         </select>
                         <small class="text-muted">Група, для якої проводиться заняття</small>
                     </div>
+                    {% if current_user.is_admin %}
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="notify_user" id="edit_notify_user" value="1">
+                            <label class="form-check-label" for="edit_notify_user">
+                                Сповістити користувача про зміни
+                            </label>
+                        </div>
+                        <small class="text-muted">Відправити повідомлення в Telegram викладачу про зміну заняття</small>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
