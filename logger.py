@@ -139,10 +139,16 @@ class BotLogger:
         self._save_to_db('SECURITY', message, user_id, command)
     
     def log_csrf_attack(self, user_id: int, callback_data: str) -> None:
-        """Логування CSRF атак"""
+        """Логування CSRF атак (для користувачів, яких немає в базі даних)"""
         message = f"CSRF АТАКА | UserID: {user_id} | Callback: {callback_data[:50]}..."
         self.logger.warning(message)
         self._save_to_db('SECURITY', message, user_id, 'csrf_attack')
+    
+    def log_csrf_expired_token(self, user_id: int, callback_data: str) -> None:
+        """Логування прострочених CSRF токенів для користувачів проекту"""
+        message = f"CSRF токен прострочений | UserID: {user_id} | Callback: {callback_data[:50]}..."
+        self.logger.warning(message)
+        self._save_to_db('WARNING', message, user_id, 'csrf_expired')
     
     def log_info(self, message: str, user_id: Optional[int] = None) -> None:
         """Логування інформаційних повідомлень"""

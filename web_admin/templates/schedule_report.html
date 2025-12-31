@@ -119,16 +119,41 @@
         {% endif %}
     {% endfor %}
 </div>
-{% if users_data|selectattr('entries_count', 'equalto', 0)|list|length > 0 %}
-<div class="row mt-3">
+{% endif %}
+
+<!-- Розділ з викладачами без занять -->
+{% if teachers_without_lessons and teachers_without_lessons|length > 0 %}
+<div class="row mt-4">
     <div class="col-12">
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i> Деякі викладачі не мають поточних занять.
+        <h3 class="mb-3"><i class="bi bi-person-x"></i> Викладачі без занять у цю мить</h3>
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-2">
+                    {% for teacher in teachers_without_lessons %}
+                    <div class="col-md-3 col-sm-4 col-6">
+                        <div class="d-flex align-items-center p-2 border rounded">
+                            <i class="bi bi-person-circle fs-4 me-2 text-muted"></i>
+                            <div class="flex-grow-1">
+                                <div class="fw-bold small">
+                                    {% if teacher.full_name %}
+                                        {{teacher.full_name}}
+                                    {% else %}
+                                        @{{teacher.username}}
+                                    {% endif %}
+                                </div>
+                                <div class="text-muted" style="font-size: 0.75rem;">@{{teacher.username}}</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
 </div>
 {% endif %}
-{% else %}
+
+{% if not users_data or (users_data|length == 0) %}
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i> На даний момент немає активних занять.
 </div>

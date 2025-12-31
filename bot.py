@@ -1150,13 +1150,25 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         # Витягуємо оригінальні дані з перевіркою CSRF
         original_data = csrf_manager.extract_callback_data(user_id, data)
         if not original_data:
-            logger.log_csrf_attack(user_id, data)
+            # Перевіряємо чи користувач є в базі даних
+            if auth_manager.is_user_allowed(user_id):
+                # Користувач проекту - токен прострочений
+                logger.log_csrf_expired_token(user_id, data)
+            else:
+                # Користувача немає в базі - можлива атака
+                logger.log_csrf_attack(user_id, data)
             await query.edit_message_text("❌ Невірний токен безпеки. Спробуйте ще раз.")
             return
         data = original_data
     else:
         # Для старих callback без CSRF токенів (тільки команди меню)
-        logger.log_csrf_attack(user_id, data)
+        # Перевіряємо чи користувач є в базі даних
+        if auth_manager.is_user_allowed(user_id):
+            # Користувач проекту - токен прострочений
+            logger.log_csrf_expired_token(user_id, data)
+        else:
+            # Користувача немає в базі - можлива атака
+            logger.log_csrf_attack(user_id, data)
         await query.edit_message_text("❌ Помилка безпеки. Спробуйте ще раз.")
         return
     

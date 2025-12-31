@@ -2726,6 +2726,8 @@ def schedule_report():
             
             # Для кожного користувача завантажуємо його заняття
             users_data = []
+            teachers_without_lessons = []  # Список викладачів без занять зараз
+            
             for teacher in teachers:
                 # Запит для заняття користувача
                 entries_query = session.query(ScheduleEntry).filter(
@@ -2758,6 +2760,10 @@ def schedule_report():
                         continue
                 
                 entries = current_entries
+                
+                # Якщо у викладача немає занять зараз, додаємо до списку
+                if len(entries) == 0:
+                    teachers_without_lessons.append(teacher)
                 
                 # Додаємо інформацію про групи до entries та парсимо час для прогресу
                 groups_dict = {g.id: g for g in groups}
@@ -2819,6 +2825,7 @@ def schedule_report():
             return render_template('schedule_report.html',
                                  users_data=users_data,
                                  teachers=teachers,
+                                 teachers_without_lessons=teachers_without_lessons,
                                  groups=groups,
                                  day_names=day_names,
                                  days_order=days_order,
